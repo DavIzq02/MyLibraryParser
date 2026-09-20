@@ -1,0 +1,52 @@
+//Usar este main en el proyecto que se quiera escanear
+package com.universidad;
+
+import generador.application.project.AnalysisConfiguration;
+import generador.application.project.JavaLanguageVersion;
+import generador.core.domain.model.UmlModel;
+import generador.infrastructure.export.UmlModelMarkdownExporter;
+import generador.infrastructure.parser.JavaProjectParser;
+
+import java.nio.file.Path;
+import java.util.List;
+
+public class Main {
+
+    public static void main(String[] args) {
+
+        long start = System.nanoTime();
+
+        //reemplazar por la ruta relativa en la que se encuentre el proyecto a escanear
+        Path rutaProyecto = Path.of( "C:\\Users\\Admin\\Desktop\\Proyecto_Poo\\src");
+
+        AnalysisConfiguration configuration = new AnalysisConfiguration(JavaLanguageVersion.JAVA_21,
+                        // Paquetes Java a incluir
+                        List.of("java.math.BigDecimal",
+                                "java.util.UUID",
+                                "java.time.OffsetDateTime"),
+                        // Paquetes a excluir
+                        List.of( "com.universidad.vista",
+                                "com.universidad.config")
+                );
+
+        JavaProjectParser projectParser =  new JavaProjectParser(configuration);
+
+        UmlModel model =  projectParser.parse(rutaProyecto);
+
+        UmlModelMarkdownExporter exporter = new UmlModelMarkdownExporter();
+
+        exporter.export(model, configuration,Path.of("uml-model-output.md"));
+
+        System.out.println("Análisis terminado correctamente.");
+
+        System.out.println("Archivo generado: uml-model-output.md");
+
+        long end = System.nanoTime();
+
+        long time = end - start;
+
+        double timeNano = time / 1_000_00.0;
+
+        System.out.println( "Tiempo total de ejecución "+ timeNano + " ns");
+    }
+}
