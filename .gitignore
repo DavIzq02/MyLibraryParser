@@ -4,3 +4,4 @@
 
 # Archivos generados por la compilación
 /build/*
+/dist/

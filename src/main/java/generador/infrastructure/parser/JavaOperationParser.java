@@ -2,6 +2,7 @@ package generador.infrastructure.parser;
 
 import com.github.javaparser.ast.Modifier;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
+import com.github.javaparser.ast.body.ConstructorDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.body.Parameter;
 import com.github.javaparser.ast.type.Type;
@@ -10,67 +11,60 @@ import generador.core.domain.feature.UmlParameter;
 import generador.core.domain.spec.UmlModifier;
 import generador.core.domain.spec.UmlVisibility;
 import generador.core.domain.type.UmlType;
-
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
 public final class JavaOperationParser {
-            public List<UmlOperation> parse(MethodDeclaration declaration,JavaTypeResolver typeResolver,JavaTypeResolutionContext context) {
-            List<UmlParameter> parameters = new ArrayList<>();
 
-        for (Parameter parameter : declaration.getParameters()) {
-            parameters.add(new UmlParameter(parameter.getNameAsString(),resolveType(parameter.getType(), typeResolver,context)));
-        }
+    public List<UmlOperation> parse(MethodDeclaration declaration, JavaTypeResolver typeResolver, JavaTypeResolutionContext context) {
+        List<UmlParameter> parameters = new ArrayList<>();
+        for (Parameter parameter : declaration.getParameters())
+            parameters.add(new UmlParameter(parameter.getNameAsString(), resolveType(parameter.getType(), typeResolver, context)));
 
-        return List.of(new UmlOperation(declaration.getNameAsString(), resolveVisibility(declaration), resolveType(declaration.getType(), typeResolver,context), parameters, resolveModifiers(declaration), java.util.Optional.empty()));
+        return List.of(new UmlOperation(declaration.getNameAsString(), resolveVisibility(declaration),
+                resolveType(declaration.getType(), typeResolver, context), parameters, resolveModifiers(declaration),
+                java.util.Optional.empty(), false));
     }
 
-    private UmlVisibility resolveVisibility( MethodDeclaration declaration) {
-            if (declaration.hasModifier(Modifier.Keyword.PUBLIC)) {
-            return UmlVisibility.PUBLIC;
-        }
+    public UmlOperation parseConstructor(ConstructorDeclaration declaration, JavaTypeResolver typeResolver, JavaTypeResolutionContext context) {
+        List<UmlParameter> parameters = new ArrayList<>();
+        for (Parameter parameter : declaration.getParameters())
+            parameters.add(new UmlParameter(parameter.getNameAsString(), resolveType(parameter.getType(), typeResolver, context)));
 
-        if (declaration.hasModifier(Modifier.Keyword.PROTECTED)) {
-            return UmlVisibility.PROTECTED;
-        }
+        return new UmlOperation(declaration.getNameAsString(), resolveVisibility(declaration),
+                new UmlType.Primitive("void"), parameters, Set.of(), java.util.Optional.empty(), true);
+    }
 
-        if (declaration.hasModifier(Modifier.Keyword.PRIVATE)) {
-            return UmlVisibility.PRIVATE;
-        }
+    private UmlVisibility resolveVisibility(MethodDeclaration declaration) {
+        if (declaration.hasModifier(Modifier.Keyword.PUBLIC)) return UmlVisibility.PUBLIC;
+        if (declaration.hasModifier(Modifier.Keyword.PROTECTED)) return UmlVisibility.PROTECTED;
+        if (declaration.hasModifier(Modifier.Keyword.PRIVATE)) return UmlVisibility.PRIVATE;
 
         if (declaration.findAncestor(ClassOrInterfaceDeclaration.class)
-                .map(ClassOrInterfaceDeclaration::isInterface)
-                .orElse(false)) {
-            return UmlVisibility.PUBLIC;
-        }
+                .map(ClassOrInterfaceDeclaration::isInterface).orElse(false)) return UmlVisibility.PUBLIC;
 
         return UmlVisibility.PACKAGE;
     }
+
+    private UmlVisibility resolveVisibility(ConstructorDeclaration declaration) {
+        if (declaration.hasModifier(Modifier.Keyword.PUBLIC)) return UmlVisibility.PUBLIC;
+        if (declaration.hasModifier(Modifier.Keyword.PROTECTED)) return UmlVisibility.PROTECTED;
+        if (declaration.hasModifier(Modifier.Keyword.PRIVATE)) return UmlVisibility.PRIVATE;
+        return UmlVisibility.PACKAGE;
+    }
+
     private Set<UmlModifier> resolveModifiers(MethodDeclaration declaration) {
-            Set<UmlModifier> modifiers = new HashSet<>();
-
-        if (declaration.hasModifier(Modifier.Keyword.STATIC)) {
-            modifiers.add(UmlModifier.STATIC);
-        }
-
-        if (declaration.hasModifier(Modifier.Keyword.ABSTRACT)) {
-            modifiers.add(UmlModifier.ABSTRACT);
-        }
-
-        if (declaration.hasModifier(Modifier.Keyword.FINAL)) {
-            modifiers.add(UmlModifier.FINAL);
-        }
-
-        if (declaration.hasModifier(Modifier.Keyword.DEFAULT)) {
-            modifiers.add(UmlModifier.DEFAULT);
-        }
-
+        Set<UmlModifier> modifiers = new HashSet<>();
+        if (declaration.hasModifier(Modifier.Keyword.STATIC)) modifiers.add(UmlModifier.STATIC);
+        if (declaration.hasModifier(Modifier.Keyword.ABSTRACT)) modifiers.add(UmlModifier.ABSTRACT);
+        if (declaration.hasModifier(Modifier.Keyword.FINAL)) modifiers.add(UmlModifier.FINAL);
+        if (declaration.hasModifier(Modifier.Keyword.DEFAULT)) modifiers.add(UmlModifier.DEFAULT);
         return Set.copyOf(modifiers);
     }
 
-    private UmlType resolveType(Type type,JavaTypeResolver typeResolver,JavaTypeResolutionContext context) {
+    private UmlType resolveType(Type type, JavaTypeResolver typeResolver, JavaTypeResolutionContext context) {
         return typeResolver.resolve(type, context);
     }
 }
