@@ -5,6 +5,7 @@ import generador.application.project.AnalysisConfiguration;
 import generador.application.project.JavaLanguageVersion;
 import generador.core.domain.model.UmlModel;
 import generador.infrastructure.export.UmlModelMarkdownExporter;
+import main.java.generador.infrastructure.export.UmlModelPlantUmlExporter;
 import generador.infrastructure.parser.JavaProjectParser;
 
 import java.nio.file.Path;
@@ -16,37 +17,48 @@ public class Main {
 
         long start = System.nanoTime();
 
-        //reemplazar por la ruta relativa en la que se encuentre el proyecto a escanear
-        Path rutaProyecto = Path.of( "C:\\Users\\Admin\\Desktop\\Proyecto_Poo\\src");
+        // Ruta del proyecto a escanear (Proyecto_Poo)
+        Path rutaProyecto = Path.of("C:\\Users\\camil\\OneDrive - Universidad del Magdalena\\7 semestre\\ing de sofware\\Proyecto_Poo");
 
-        AnalysisConfiguration configuration = new AnalysisConfiguration(JavaLanguageVersion.JAVA_21,
-                        // Paquetes Java a incluir
-                        List.of("java.math.BigDecimal",
-                                "java.util.UUID",
-                                "java.time.OffsetDateTime"),
-                        // Paquetes a excluir
-                        List.of( "com.universidad.vista",
-                                "com.universidad.config")
-                );
+        AnalysisConfiguration configuration = new AnalysisConfiguration(
+                JavaLanguageVersion.JAVA_21,
+                // Paquetes Java a incluir
+                List.of("java.math.BigDecimal",
+                        "java.util.UUID",
+                        "java.time.OffsetDateTime"),
+                // Paquetes a excluir
+                List.of("com.universidad.vista",
+                        "com.universidad.config")
+        );
 
-        JavaProjectParser projectParser =  new JavaProjectParser(configuration);
+        JavaProjectParser projectParser = new JavaProjectParser(configuration);
 
-        UmlModel model =  projectParser.parse(rutaProyecto);
+        // 1. Parsear el proyecto
+        UmlModel model = projectParser.parse(rutaProyecto);
 
-        UmlModelMarkdownExporter exporter = new UmlModelMarkdownExporter();
+        // 2. Exportar a Markdown (.md)
+        UmlModelMarkdownExporter mdExporter = new UmlModelMarkdownExporter();
+        Path rutaSalidaMd = Path.of("uml-model-output.md");
+        mdExporter.export(model, configuration, rutaSalidaMd);
 
-        exporter.export(model, configuration,Path.of("uml-model-output.md"));
+        // 3. Exportar a PlantUML (.puml) con paquetes y miembros completos
+        UmlModelPlantUmlExporter pumlExporter = new UmlModelPlantUmlExporter();
+        Path rutaSalidaPuml = Path.of("uml-model-output.puml");
 
-        System.out.println("Análisis terminado correctamente.");
-
-        System.out.println("Archivo generado: uml-model-output.md");
+        try {
+            pumlExporter.export(model, rutaSalidaPuml);
+            System.out.println("Análisis terminado correctamente.");
+            System.out.println("Archivo Markdown generado: " + rutaSalidaMd.toAbsolutePath());
+            System.out.println("Archivo PlantUML generado: " + rutaSalidaPuml.toAbsolutePath());
+        } catch (IOException e) {
+            System.err.println("Error al exportar el archivo .puml: " + e.getMessage());
+            e.printStackTrace();
+        }
 
         long end = System.nanoTime();
-
         long time = end - start;
+        double timeMs = time / 1_000_000.0;
 
-        double timeNano = time / 1_000_00.0;
-
-        System.out.println( "Tiempo total de ejecución "+ timeNano + " ns");
+        System.out.println("Tiempo total de ejecución: " + timeMs + " ms");
     }
 }
