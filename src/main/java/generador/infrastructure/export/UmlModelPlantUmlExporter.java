@@ -19,7 +19,7 @@ public final class UmlModelPlantUmlExporter {
         puml.append("skinparam classAttributeIconSize 0\n");
         puml.append("skinparam linetype ortho\n\n");
 
-        // 1. AGRUPAR CLASIFICADORES POR PAQUETE REAL
+        // 1. AGRUPAR CLASIFICADORES POR PAQUETE
         Map<String, List<UmlClassifier>> clasificadoresPorPaquete = agruparPorPaquete(model.classifiers().values());
 
         for (Map.Entry<String, List<UmlClassifier>> entry : clasificadoresPorPaquete.entrySet()) {
@@ -30,16 +30,18 @@ public final class UmlModelPlantUmlExporter {
 
             for (UmlClassifier classifier : listaClases) {
                 String tipo = obtenerTipoClassifier(classifier);
+                String estereotipo = esRecord(classifier) ? " <<record>>" : "";
                 String fullName = classifier.qualifiedName();
                 String alias = sanitizarAlias(fullName);
                 String simpleName = obtenerNombreSimple(fullName);
 
+                // Imprime: class "CursoDto" as alias <<record>> {
                 puml.append("  ").append(tipo).append(" \"").append(simpleName)
-                    .append("\" as ").append(alias).append(" {\n");
+                    .append("\" as ").append(alias).append(estereotipo).append(" {\n");
 
                 // Propiedades / Atributos
                 for (UmlProperty prop : classifier.properties()) {
-                    puml.append("    ").append(prop.visibility()).append(" ")
+                    puml.append("    ").append(convertirVisibilidad(prop.visibility())).append(" ")
                         .append(prop.name()).append(" : ")
                         .append(prop.type().name()).append("\n");
                 }
@@ -50,7 +52,7 @@ public final class UmlModelPlantUmlExporter {
 
                 // Métodos / Operaciones
                 for (UmlOperation op : classifier.operations()) {
-                    puml.append("    ").append(op.visibility()).append(" ")
+                    puml.append("    ").append(convertirVisibilidad(op.visibility())).append(" ")
                         .append(op.name()).append("() : ")
                         .append(op.isConstructor() ? "void" : op.returnType().name()).append("\n");
                 }
@@ -84,13 +86,37 @@ public final class UmlModelPlantUmlExporter {
         }
     }
 
+    private boolean esRecord(UmlClassifier classifier) {
+        return classifier instanceof UmlRecord;
+    }
+
+    private String obtenerTipoClassifier(UmlClassifier classifier) {
+        if (classifier instanceof UmlInterface) return "interface";
+        if (classifier instanceof UmlEnumeration) return "enum";
+        
+        // Si es una clase abstracta
+        if (classifier.modifiers().toString().toLowerCase().contains("abstract")) {
+            return "abstract class";
+        }
+
+        return "class";
+    }
+
+    private String convertirVisibilidad(Object visibilidad) {
+        if (visibilidad == null) return "~";
+        String vis = visibilidad.toString().toUpperCase();
+        if (vis.contains("PUBLIC")) return "+";
+        if (vis.contains("PRIVATE")) return "-";
+        if (vis.contains("PROTECTED")) return "#";
+        return "~";
+    }
+
     private Map<String, List<UmlClassifier>> agruparPorPaquete(Collection<UmlClassifier> clasificadores) {
         Map<String, List<UmlClassifier>> agrupados = new HashMap<>();
 
         for (UmlClassifier classifier : clasificadores) {
             String fullName = classifier.qualifiedName();
             
-            // Revisa si usa '::' o '.' como separador de paquetes
             int lastSep = fullName.lastIndexOf("::");
             if (lastSep == -1) {
                 lastSep = fullName.lastIndexOf('.');
@@ -135,18 +161,11 @@ public final class UmlModelPlantUmlExporter {
     }
 
     private int calcularPeso(UmlRelationship rel) {
-        if (rel instanceof UmlGeneralization) return 4; // Herencia (extends)
-        if (rel instanceof UmlRealization) return 3;    // Implementación (implements)
-        if (rel instanceof UmlAssociation) return 2;    // Asociación (atributos)
-        if (rel instanceof UmlDependency) return 1;     // Dependencia (parámetros)
+        if (rel instanceof UmlGeneralization) return 4; 
+        if (rel instanceof UmlRealization) return 3;    
+        if (rel instanceof UmlAssociation) return 2;    
+        if (rel instanceof UmlDependency) return 1;     
         return 0;
-    }
-
-    private String obtenerTipoClassifier(UmlClassifier classifier) {
-        if (classifier instanceof UmlInterface) return "interface";
-        if (classifier instanceof UmlEnumeration) return "enum";
-        if (classifier instanceof UmlRecord) return "class";
-        return "class";
     }
 
     private String obtenerConectorPuml(UmlRelationship rel) {
