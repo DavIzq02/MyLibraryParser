@@ -35,7 +35,6 @@ public final class UmlModelPlantUmlExporter {
                 String alias = sanitizarAlias(fullName);
                 String simpleName = obtenerNombreSimple(fullName);
 
-                // Imprime: class "CursoDto" as alias <<record>> {
                 puml.append("  ").append(tipo).append(" \"").append(simpleName)
                     .append("\" as ").append(alias).append(estereotipo).append(" {\n");
 
@@ -63,20 +62,54 @@ public final class UmlModelPlantUmlExporter {
             puml.append("}\n\n");
         }
 
-        puml.append("' --- RELACIÓN DE MÁS PESO POR CLASE ORIGEN ---\n");
+        puml.append("' --- RELACIONES DE HERENCIA E IMPLEMENTACION ---\n");
 
-        // 2. SELECCIONAR ÚNICAMENTE LA RELACIÓN DE MAYOR PESO
-        Map<String, UmlRelationship> relacionesDeMayorPeso = seleccionarRelacionDeMayorPesoPorOrigen(model.relationships());
+        // 2. DIBUJAR HERENCIA Y REALIZACIÓN 
+        for (UmlRelationship rel : model.relationships()) {
+            if (!(rel instanceof UmlAssociation)) {
+                String origenAlias = sanitizarAlias(rel.source().qualifiedName());
+                String destinoAlias = sanitizarAlias(rel.target().qualifiedName());
+                String conector = obtenerConectorPuml(rel);
 
-        // 3. DIBUJAR LÍNEAS DE CONEXIÓN USANDO EL ALIAS SANITIZADO
-        for (UmlRelationship rel : relacionesDeMayorPeso.values()) {
-            String origenAlias = sanitizarAlias(rel.source().qualifiedName());
-            String destinoAlias = sanitizarAlias(rel.target().qualifiedName());
-            String conector = obtenerConectorPuml(rel);
+                if (conector != null) {
+                    puml.append(origenAlias).append(" ")
+                        .append(conector).append(" ")
+                        .append(destinoAlias).append("\n");
+                }
+            }
+        }
 
-            puml.append(origenAlias).append(" ")
-                .append(conector).append(" ")
-                .append(destinoAlias).append("\n");
+        puml.append("\n' --- RELACIONES DE ANIDAMIENTO (CLASES INTERNAS) ---\n");
+
+        // 3. INFERIR EL ANIDAMIENTO LÉXICO FORZANDO LA CRUZ EN EL HIJO
+        for (UmlClassifier classifier : model.classifiers().values()) {
+            String fullName = classifier.qualifiedName();
+            int lastSep = fullName.lastIndexOf("::");
+            if (lastSep == -1) {
+                lastSep = fullName.lastIndexOf('.');
+            }
+
+            if (lastSep != -1) {
+                String possibleParentName = fullName.substring(0, lastSep);
+                
+                boolean isNested = false;
+                for (UmlClassifier parentCandidate : model.classifiers().values()) {
+                    if (parentCandidate.qualifiedName().equals(possibleParentName)) {
+                        isNested = true;
+                        break;
+                    }
+                }
+
+                if (isNested) {
+                    String parentAlias = sanitizarAlias(possibleParentName);
+                    String childAlias = sanitizarAlias(fullName);
+                    
+                    // CAMBIO CLAVE: Hijo +-- Padre
+                    // Al usar +--, la cruz se dibuja en el elemento de la izquierda (el hijo), 
+                    // tal como sale en la foto del profesor.
+                    puml.append(childAlias).append(" +-- ").append(parentAlias).append("\n");
+                }
+            }
         }
 
         puml.append("\n@enduml\n");
@@ -94,11 +127,9 @@ public final class UmlModelPlantUmlExporter {
         if (classifier instanceof UmlInterface) return "interface";
         if (classifier instanceof UmlEnumeration) return "enum";
         
-        // Si es una clase abstracta
         if (classifier.modifiers().toString().toLowerCase().contains("abstract")) {
             return "abstract class";
         }
-
         return "class";
     }
 
@@ -116,13 +147,25 @@ public final class UmlModelPlantUmlExporter {
 
         for (UmlClassifier classifier : clasificadores) {
             String fullName = classifier.qualifiedName();
+            String packageName = "sin_paquete";
             
-            int lastSep = fullName.lastIndexOf("::");
-            if (lastSep == -1) {
-                lastSep = fullName.lastIndexOf('.');
+            int firstUpper = -1;
+            for (int i = 0; i < fullName.length(); i++) {
+                if (Character.isUpperCase(fullName.charAt(i))) {
+                    firstUpper = i;
+                    break;
+                }
             }
             
-            String packageName = (lastSep != -1) ? fullName.substring(0, lastSep) : "sin_paquete";
+            if (firstUpper > 0) {
+                int lastSep = fullName.lastIndexOf('.', firstUpper);
+                if (lastSep == -1) {
+                    lastSep = fullName.lastIndexOf("::", firstUpper);
+                }
+                if (lastSep != -1) {
+                    packageName = fullName.substring(0, lastSep);
+                }
+            }
 
             agrupados.computeIfAbsent(packageName, k -> new ArrayList<>()).add(classifier);
         }
@@ -142,37 +185,9 @@ public final class UmlModelPlantUmlExporter {
         return qualifiedName.replace(".", "_").replace(":", "_");
     }
 
-    private Map<String, UmlRelationship> seleccionarRelacionDeMayorPesoPorOrigen(Collection<UmlRelationship> relaciones) {
-        Map<String, UmlRelationship> mapaRelaciones = new HashMap<>();
-
-        for (UmlRelationship rel : relaciones) {
-            String origenId = rel.source().qualifiedName();
-
-            if (!mapaRelaciones.containsKey(origenId)) {
-                mapaRelaciones.put(origenId, rel);
-            } else {
-                UmlRelationship relacionExistente = mapaRelaciones.get(origenId);
-                if (calcularPeso(rel) > calcularPeso(relacionExistente)) {
-                    mapaRelaciones.put(origenId, rel);
-                }
-            }
-        }
-        return mapaRelaciones;
-    }
-
-    private int calcularPeso(UmlRelationship rel) {
-        if (rel instanceof UmlGeneralization) return 4; 
-        if (rel instanceof UmlRealization) return 3;    
-        if (rel instanceof UmlAssociation) return 2;    
-        if (rel instanceof UmlDependency) return 1;     
-        return 0;
-    }
-
     private String obtenerConectorPuml(UmlRelationship rel) {
-        if (rel instanceof UmlGeneralization) return "--|>";
-        if (rel instanceof UmlRealization) return "..|>";
-        if (rel instanceof UmlAssociation) return "-->";
-        if (rel instanceof UmlDependency) return "..>";
-        return "-->";
+        if (rel instanceof UmlGeneralization) return "-up-|>"; 
+        if (rel instanceof UmlRealization || rel instanceof UmlDependency) return ".up.|>";  
+        return null; 
     }
 }
