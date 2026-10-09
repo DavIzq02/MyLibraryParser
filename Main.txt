@@ -5,9 +5,10 @@ import generador.application.project.AnalysisConfiguration;
 import generador.application.project.JavaLanguageVersion;
 import generador.core.domain.model.UmlModel;
 import generador.infrastructure.export.UmlModelMarkdownExporter;
-import main.java.generador.infrastructure.export.UmlModelPlantUmlExporter;
+import main.java.generador.infrastructure.export.*;
 import generador.infrastructure.parser.JavaProjectParser;
 
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
 
@@ -18,7 +19,13 @@ public class Main {
         long start = System.nanoTime();
 
         // Ruta del proyecto a escanear (Proyecto_Poo)
-        Path rutaProyecto = Path.of("C:\\Users\\camil\\OneDrive - Universidad del Magdalena\\7 semestre\\ing de sofware\\Proyecto_Poo");
+        //Ruta Camilo;
+        //String ruta = "C:\\Users\\camil\\OneDrive - Universidad del Magdalena\\7 semestre\\ing de sofware\\Proyecto_Poo"
+
+        //Ruta David;
+        String ruta = "C:\\Users\\Admin\\Desktop\\Proyecto_Poo\\src";
+
+        Path rutaProyecto = Path.of(ruta);
 
         AnalysisConfiguration configuration = new AnalysisConfiguration(
                 JavaLanguageVersion.JAVA_21,
