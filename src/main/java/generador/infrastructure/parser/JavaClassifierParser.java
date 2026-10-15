@@ -83,7 +83,7 @@ public final class JavaClassifierParser {
                     ? parseInterface(classOrInterface, namespace, typeResolver, classifierContext)
                     : parseClass(classOrInterface, namespace, typeResolver, classifierContext);
         } else if (declaration instanceof EnumDeclaration enumDeclaration) {
-            classifier = parseEnumeration(enumDeclaration, namespace);
+            classifier = parseEnumeration(enumDeclaration, namespace, typeResolver, classifierContext);
         } else if (declaration instanceof RecordDeclaration recordDeclaration) {
             classifier = parseRecord(recordDeclaration, namespace, typeResolver, classifierContext);
         } else if (declaration instanceof AnnotationDeclaration annotationDeclaration) {
@@ -195,18 +195,46 @@ public final class JavaClassifierParser {
                 Optional.empty(), Optional.empty());
     }
 
-    private UmlEnumeration parseEnumeration(EnumDeclaration declaration, UmlNamespace namespace) {
+    private UmlEnumeration parseEnumeration(EnumDeclaration declaration, UmlNamespace namespace,
+            JavaTypeResolver typeResolver, JavaTypeResolutionContext context) {
+
+        List<UmlEnumerationLiteral> literals = new ArrayList<>();
+        for (var entry : declaration.getEntries())
+            literals.add(new UmlEnumerationLiteral(entry.getNameAsString()));
+
+        List<UmlProperty> properties = new ArrayList<>();
+        Set<String> constructorParameters = resolveConstructorParameters(declaration);
+
+        for (var field : declaration.getFields()) {
+            List<UmlProperty> parsedProperties = propertyParser.parse(field, typeResolver, context, constructorParameters);
+            properties.addAll(parsedProperties);
+        }
+
+        List<UmlOperation> operations = new ArrayList<>();
+        for (var constructor : declaration.getConstructors())
+            operations.add(operationParser.parseConstructor(constructor, typeResolver, context));
+
+        for (var method : declaration.getMethods())
+            operations.addAll(operationParser.parse(method, typeResolver, context));
+
+        return new UmlEnumeration(declaration.getNameAsString(), namespace, resolveVisibility(declaration), List.of(),
+                resolveModifiers(declaration), properties, operations, literals, Optional.empty(), Optional.empty());
+    }
+
+    private Set<String> resolveConstructorParameters(EnumDeclaration declaration) {
+        Set<String> parameters = new java.util.HashSet<>();
+        for (var constructor : declaration.getConstructors())
+            for (Parameter parameter : constructor.getParameters()) parameters.add(parameter.getNameAsString());
+        return Set.copyOf(parameters);
+    }
+
+    private UmlEnumeration parseEnumerationStructure(EnumDeclaration declaration, UmlNamespace namespace) {
         List<UmlEnumerationLiteral> literals = new ArrayList<>();
         for (var entry : declaration.getEntries())
             literals.add(new UmlEnumerationLiteral(entry.getNameAsString()));
 
         return new UmlEnumeration(declaration.getNameAsString(), namespace, resolveVisibility(declaration), List.of(),
                 resolveModifiers(declaration), List.of(), List.of(), literals, Optional.empty(), Optional.empty());
-    }
-
-    private UmlEnumeration parseEnumerationStructure(EnumDeclaration declaration, UmlNamespace namespace) {
-        return new UmlEnumeration(declaration.getNameAsString(), namespace, resolveVisibility(declaration), List.of(),
-                resolveModifiers(declaration), List.of(), List.of(), List.of(), Optional.empty(), Optional.empty());
     }
 
     private UmlRecord parseRecord(RecordDeclaration declaration, UmlNamespace namespace, JavaTypeResolver typeResolver,

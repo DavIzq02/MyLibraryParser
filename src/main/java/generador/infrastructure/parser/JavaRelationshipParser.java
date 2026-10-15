@@ -2,6 +2,9 @@ package generador.infrastructure.parser;
 
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
+import com.github.javaparser.ast.body.EnumDeclaration;
+import com.github.javaparser.ast.body.RecordDeclaration;
+import com.github.javaparser.ast.body.TypeDeclaration;
 
 import generador.core.domain.classifier.UmlClassifier;
 import generador.core.domain.classifier.UmlEnumeration;
@@ -37,6 +40,48 @@ public final class JavaRelationshipParser {
             parseExtendedTypes(declaration, source, typeResolver, context, relationships);
 
             parseImplementedTypes(declaration, source, typeResolver, context, relationships);
+
+            parseProperties(source, relationships);
+
+            parseOperations(source, relationships);
+        }
+
+        for (EnumDeclaration declaration : compilationUnit.findAll(EnumDeclaration.class)) {
+            UmlClassifier source = classifiers.get(resolveQualifiedName(declaration, context));
+
+            if (source == null) {
+                continue;
+            }
+
+            declaration.getImplementedTypes().forEach(type -> {
+                UmlType resolvedType = typeResolver.resolve(type, context);
+                UmlClassifier target = resolveRelationshipTarget(resolvedType);
+                if (target != null) {
+                    addRelationshipIfAbsent(new UmlRealization(source, target, Optional.empty(), Optional.empty()),
+                            relationships);
+                }
+            });
+
+            parseProperties(source, relationships);
+
+            parseOperations(source, relationships);
+        }
+
+        for (RecordDeclaration declaration : compilationUnit.findAll(RecordDeclaration.class)) {
+            UmlClassifier source = classifiers.get(resolveQualifiedName(declaration, context));
+
+            if (source == null) {
+                continue;
+            }
+
+            declaration.getImplementedTypes().forEach(type -> {
+                UmlType resolvedType = typeResolver.resolve(type, context);
+                UmlClassifier target = resolveRelationshipTarget(resolvedType);
+                if (target != null) {
+                    addRelationshipIfAbsent(new UmlRealization(source, target, Optional.empty(), Optional.empty()),
+                            relationships);
+                }
+            });
 
             parseProperties(source, relationships);
 
@@ -213,16 +258,43 @@ public final class JavaRelationshipParser {
         return null;
     }
 
-    private String resolveQualifiedName(ClassOrInterfaceDeclaration declaration, JavaTypeResolutionContext context) {
-        String name = declaration.getNameAsString();
+    /**
+     * Construye la clave cualificada recorriendo la cadena de ancestros
+     * TypeDeclaration, reproduciendo exactamente la forma en que
+     * JavaClassifierParser construye la clave en el mapa:
+     *   pkg::OuterClass::InnerClass
+     */
+    private String resolveQualifiedName(TypeDeclaration<?> declaration, JavaTypeResolutionContext context) {
+        List<String> chain = new ArrayList<>();
+        chain.add(declaration.getNameAsString());
 
-        if (context.packageName().isEmpty()) {
-            return name;
+        TypeDeclaration<?> ancestor = declaration.findAncestor(TypeDeclaration.class).orElse(null);
+        while (ancestor != null) {
+            chain.add(0, ancestor.getNameAsString());
+            ancestor = ancestor.findAncestor(TypeDeclaration.class).orElse(null);
         }
 
-        return context.packageName()
-                .replace(".", "::")
-                + "::"
-                + name;
+        String simplePath = String.join("::", chain);
+
+        if (context.packageName().isEmpty()) {
+            return simplePath;
+        }
+
+        return context.packageName().replace(".", "::") + "::" + simplePath;
     }
-}
+
+    /** Sobrecarga de conveniencia para ClassOrInterfaceDeclaration (evita cast). */
+    private String resolveQualifiedName(ClassOrInterfaceDeclaration declaration, JavaTypeResolutionContext context) {
+        return resolveQualifiedName((TypeDeclaration<?>) declaration, context);
+    }
+
+    /** Sobrecarga de conveniencia para EnumDeclaration. */
+    private String resolveQualifiedName(EnumDeclaration declaration, JavaTypeResolutionContext context) {
+        return resolveQualifiedName((TypeDeclaration<?>) declaration, context);
+    }
+
+    /** Sobrecarga de conveniencia para RecordDeclaration. */
+    private String resolveQualifiedName(RecordDeclaration declaration, JavaTypeResolutionContext context) {
+        return resolveQualifiedName((TypeDeclaration<?>) declaration, context);
+    }
+}

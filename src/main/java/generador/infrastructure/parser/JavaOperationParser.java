@@ -52,6 +52,12 @@ public final class JavaOperationParser {
         if (declaration.hasModifier(Modifier.Keyword.PUBLIC)) return UmlVisibility.PUBLIC;
         if (declaration.hasModifier(Modifier.Keyword.PROTECTED)) return UmlVisibility.PROTECTED;
         if (declaration.hasModifier(Modifier.Keyword.PRIVATE)) return UmlVisibility.PRIVATE;
+
+        // En Java, los constructores de enum son privados por definicion
+        if (declaration.findAncestor(com.github.javaparser.ast.body.EnumDeclaration.class).isPresent()) {
+            return UmlVisibility.PRIVATE;
+        }
+
         return UmlVisibility.PACKAGE;
     }
 

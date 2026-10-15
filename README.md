@@ -1,4 +1,4 @@
-﻿# Analizador y Generador de Arquitectura UML para Proyectos Java
+# Analizador y Generador de Arquitectura UML para Proyectos Java
 > 🤖 **INSTRUCCIONES PARA MODELOS DE LENGUAJE E IAs:** Este documento contiene el contexto arquitectónico, las reglas de diseño y el estado estructural exacto de este proyecto. Cualquier código que generes, refactorices o extiendas debe respetar la arquitectura Clean Architecture, los patrones de inmutabilidad y la estructura de paquetes descrita a continuación.
 ## 📌 Descripción General
 Este aplicativo es una herramienta diseñada para analizar proyectos desarrollados en Java y generar automáticamente su arquitectura y diseño orientado a objetos en formato PlantUML. Su propósito es ayudar a desarrolladores y arquitectos de software a visualizar, entender y documentar bases de código existentes mediante diagramas UML claros y precisos.
@@ -117,7 +117,8 @@ src/main/java/generador/
 ├── infrastructure/             # Detalles técnicos (Frameworks, Librerías externas)
 │   ├── codesmell/              # Detectores de code smells (preparado, sin implementación aún)
 │   ├── export/                 # Exportación del modelo UML
-│   │   └── UmlModelMarkdownExporter.java   # Exporta el UmlModel a Markdown estructurado
+│   │   ├── UmlModelMarkdownExporter.java   # Exporta el UmlModel a Markdown estructurado (.md)
+│   │   └── UmlModelPlantUmlExporter.java   # Exporta el UmlModel a formato de diagramas PlantUML (.puml)
 │   ├── layout/                 # Manejo de layouts de diagrama (preparado)
 │   ├── parser/                 # Parsers de código Java con JavaParser 3.28.2
 │   │   ├── JavaClassifierParser.java       # Parser principal de clasificadores
@@ -140,7 +141,7 @@ src/main/java/generador/
 La organización interna responde a la necesidad de mantener alta cohesión temática y una estricta separación de responsabilidades en alineación con **Clean Architecture**:
 
   * **`core/domain/` (Aislamiento del Metamodelo UML):** Se conserva un core de Java puro, sin dependencias externas ni frameworks, que representa el metamodelo UML.
-  * **`classifier/` y `element/`:** Separan la jerarquía básica de componentes del metamodelo UML (elementos nombrados, espacios de nombres, clasificadores abstractos y concretos). El clasificador base `UmlClassifier` agrupa los seis tipos concretos: `UmlClass`, `UmlInterface`, `UmlRecord`, `UmlEnumeration`, `UmlAnnotation` y el literal `UmlEnumerationLiteral`.
+  * **`classifier/` y `element/`:** Separan la jerarquía básica de componentes del metamodelo UML (elementos nombrados, espacios de nombres, clasificadores abstractos y concretos). El clasificador base `UmlClassifier` agrupa los seis tipos concretos: `UmlClass`, `UmlInterface`, `UmlRecord`, `UmlEnumeration`, `UmlAnnotation` y el literal `UmlEnumerationLiteral`. Las enumeraciones (`UmlEnumeration`) modelan íntegramente sus literales constantes, sus propiedades internas tipadas, sus operaciones y los contratos que implementan.
   * **`feature/`:** Agrupa los miembros internos de las estructuras (`UmlOperation`, `UmlProperty`, `UmlParameter`), evitando sobrecargar las entidades principales.
   * **`relationship/`:** Concentra la interfaz base `UmlRelationship` y las implementaciones concretas de cada tipo de relación (`UmlAssociation`, `UmlDependency`, `UmlGeneralization`, `UmlNesting`, `UmlRealization`).
   * **`spec/` y `type/`:** Aislar los modificadores, especificadores (visibilidad, tipos de agregación, clasificación de tipo) y tipos de datos en paquetes dedicados garantiza alta reusabilidad y previene la dispersión de definiciones base. `UmlClassification` es el enum que enumera las 6 categorías de clasificador soportadas.
@@ -153,16 +154,58 @@ La organización interna responde a la necesidad de mantener alta cohesión tem�
   * **`project/`:** Agrupa modelos propios del contexto de ejecución: `Project`, `AnalysisConfiguration` (con su Builder fluido), `DiagramLayout`, `PlantUmlDocument`, `JavaLanguageVersion`, `WhiteList` y `BlackList`.
 
 * **`infrastructure/` (Aislamiento de Tecnologías y Librerías Externas):**
-  * **`parser/`:** Implementación activa con **JavaParser 3.28.2**. Consta de 9 clases especializadas que resuelven clasificadores, relaciones, propiedades, operaciones, anidamientos y tipos (incluidos genéricos, arrays y referencias externas).
-  * **`export/`:** `UmlModelMarkdownExporter` exporta el `UmlModel` completo a un documento Markdown estructurado (véase `uml-model-output.md` en la raíz del proyecto como ejemplo de salida real).
+  * **`parser/`:** Implementación activa con **JavaParser 3.28.2**. Consta de clases especializadas que resuelven clasificadores (clases, interfaces, records, enums y anotaciones), relaciones (herencia, realizaciones, dependencias, asociaciones), propiedades, operaciones, anidamientos y tipos (incluidos genéricos, arrays y referencias externas).
+  * **`export/`:** Contiene los adaptadores de salida del modelo UML:
+    * `UmlModelMarkdownExporter`: exporta el `UmlModel` completo a un informe Markdown estructurado (véase `uml-model-output.md` como ejemplo real con métricas, literales de enum, tablas de atributos y métodos).
+    * `UmlModelPlantUmlExporter`: genera código PlantUML (`.puml`) con organización por paquetes, estereotipos (`<<record>>`), constantes/literales de enumeración, propiedades tipadas con visibilidad, métodos, jerarquías de herencia (`-up-|>`), realización (`.up.|>`) y relaciones de clases internas/anidadas (`+--`).
   * Los subpaquetes `codesmell/`, `layout/`, `persistence/`, `rendering/` y `telemetry/` están declarados y preparados para recibir implementaciones futuras sin afectar el `core` ni la capa de `application`.
 
 ## 🛠 Tecnologías Involucradas
 Como se mencionó, estas son vistas como "detalles" en esta arquitectura:
 - **Java 21** (Lenguaje Base — `javac.source=21`, `javac.target=21`)
-- **JavaParser 3.28.2:** Única dependencia de compilación. Utilizada en `infrastructure/parser` para analizar el AST de los archivos `.java`.
-- **PlantUML:** Herramienta de destino en `infrastructure/rendering` para procesar el texto generado en diagramas gráficos (integración preparada, no activa aún).
+- **JavaParser 3.28.2:** Dependencia de compilación. Utilizada en `infrastructure/parser` para analizar el AST de los archivos `.java`.
+- **PlantUML:** Formato de destino soportado activamente a través de `generador.infrastructure.export.UmlModelPlantUmlExporter`, listo para ser renderizado en diagramas gráficos.
 - **Apache Ant + NetBeans:** Sistema de build y entorno de desarrollo. El proyecto se construye con `build.xml` y la configuración de `nbproject/`. No usa Maven, Gradle ni Spring Boot.
+
+---
+
+## 💻 Ejemplo de Uso Rápido
+
+Para analizar un proyecto Java y generar tanto el reporte Markdown como el archivo PlantUML (`.puml`):
+
+```java
+import generador.application.project.AnalysisConfiguration;
+import generador.application.project.JavaLanguageVersion;
+import generador.core.domain.model.UmlModel;
+import generador.infrastructure.export.UmlModelMarkdownExporter;
+import generador.infrastructure.export.UmlModelPlantUmlExporter;
+import generador.infrastructure.parser.JavaProjectParser;
+
+import java.nio.file.Path;
+import java.util.List;
+
+public class Main {
+    public static void main(String[] args) throws Exception {
+        Path rutaSrc = Path.of("C:/ruta/a/tu/proyecto/src");
+
+        AnalysisConfiguration config = new AnalysisConfiguration(
+                JavaLanguageVersion.JAVA_21,
+                List.of("java.math.BigDecimal", "java.util.UUID"), // Whitelist de tipos externos
+                List.of("com.ejemplo.config")                       // Blacklist de paquetes a ignorar
+        );
+
+        JavaProjectParser parser = new JavaProjectParser(config);
+        UmlModel model = parser.parse(rutaSrc);
+
+        // Exportar a Markdown
+        new UmlModelMarkdownExporter().export(model, config, Path.of("uml-model-output.md"));
+
+        // Exportar a PlantUML (.puml)
+        new UmlModelPlantUmlExporter().export(model, Path.of("uml-model-output.puml"));
+    }
+}
+```
+
 ---
 
 ## 🤖 Declaración de Desarrollo Asistido por IA (AI-Assisted Development)

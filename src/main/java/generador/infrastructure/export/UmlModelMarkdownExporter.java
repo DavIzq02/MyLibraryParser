@@ -1,6 +1,8 @@
 package generador.infrastructure.export;
 
 import generador.core.domain.classifier.UmlClassifier;
+import generador.core.domain.classifier.UmlEnumeration;
+import generador.core.domain.classifier.UmlEnumerationLiteral;
 import generador.core.domain.feature.UmlOperation;
 import generador.core.domain.feature.UmlParameter;
 import generador.core.domain.feature.UmlProperty;
@@ -89,6 +91,14 @@ public final class UmlModelMarkdownExporter {
 
         if (!classifier.modifiers().isEmpty())
             output.append("**Modifiers:** `").append(classifier.modifiers()).append("`\n\n");
+
+        if (classifier instanceof UmlEnumeration enumeration && !enumeration.literals().isEmpty()) {
+            output.append("#### Literals\n\n");
+            for (UmlEnumerationLiteral literal : enumeration.literals()) {
+                output.append("- `+ ").append(literal.name()).append("`\n");
+            }
+            output.append("\n");
+        }
 
         appendProperties(output, classifier);
         appendOperations(output, classifier);

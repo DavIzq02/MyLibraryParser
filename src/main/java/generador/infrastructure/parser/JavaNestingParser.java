@@ -3,6 +3,9 @@ package generador.infrastructure.parser;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.BodyDeclaration;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
+import com.github.javaparser.ast.body.EnumDeclaration;
+import com.github.javaparser.ast.body.RecordDeclaration;
+import com.github.javaparser.ast.body.TypeDeclaration;
 import generador.core.domain.classifier.UmlClassifier;
 import generador.core.domain.relationship.UmlNesting;
 import generador.core.domain.relationship.UmlRelationship;
@@ -16,14 +19,27 @@ public final class JavaNestingParser {
     public List<UmlRelationship> parse(CompilationUnit compilationUnit, Map<String, UmlClassifier> classifiers) {
         List<UmlRelationship> relationships = new ArrayList<>();
 
-        for (ClassOrInterfaceDeclaration outerDeclaration : compilationUnit.findAll(ClassOrInterfaceDeclaration.class)) {
-            UmlClassifier outerClassifier = classifiers.get(resolveQualifiedName(outerDeclaration, compilationUnit));
+        String packagePrefix = compilationUnit.getPackageDeclaration()
+                .map(pd -> pd.getNameAsString().replace(".", "::") + "::")
+                .orElse("");
+
+        /*
+         * Iteramos todos los TypeDeclaration del archivo (cualquier nivel)
+         * y para cada uno buscamos sus miembros que sean también tipos.
+         * De esa forma capturamos cualquier combinación:
+         *   class → class, class → enum, class → interface,
+         *   enum  → class, record → class, etc.
+         */
+        for (TypeDeclaration<?> outer : compilationUnit.findAll(TypeDeclaration.class)) {
+            String outerKey = buildQualifiedKey(outer, packagePrefix);
+            UmlClassifier outerClassifier = classifiers.get(outerKey);
             if (outerClassifier == null) continue;
 
-            for (BodyDeclaration<?> member : outerDeclaration.getMembers()) {
-                if (!(member instanceof ClassOrInterfaceDeclaration innerDeclaration)) continue;
+            for (BodyDeclaration<?> member : outer.getMembers()) {
+                if (!(member instanceof TypeDeclaration<?> inner)) continue;
 
-                UmlClassifier innerClassifier = classifiers.get(resolveQualifiedName(innerDeclaration, compilationUnit));
+                String innerKey = buildQualifiedKey(inner, packagePrefix);
+                UmlClassifier innerClassifier = classifiers.get(innerKey);
                 if (innerClassifier == null) continue;
 
                 relationships.add(new UmlNesting(outerClassifier, innerClassifier, Optional.empty(), Optional.empty()));
@@ -33,37 +49,22 @@ public final class JavaNestingParser {
         return List.copyOf(relationships);
     }
 
-    private String resolveQualifiedName(ClassOrInterfaceDeclaration declaration, CompilationUnit compilationUnit) {
-        String packageName = compilationUnit.getPackageDeclaration()
-                .map(packageDeclaration -> packageDeclaration.getNameAsString()).orElse("");
+    /**
+     * Construye la clave de búsqueda en el mapa de clasificadores
+     * recorriendo la cadena de ancestros TypeDeclaration para
+     * producir la forma: pkg::Outer::Inner.
+     */
+    private String buildQualifiedKey(TypeDeclaration<?> declaration, String packagePrefix) {
+        List<String> chain = new ArrayList<>();
+        chain.add(declaration.getNameAsString());
 
-        StringBuilder qualifiedName = new StringBuilder();
-
-        if (!packageName.isEmpty()) {
-            qualifiedName.append(packageName.replace(".", "::"));
-            qualifiedName.append("::");
-        }
-
-        List<ClassOrInterfaceDeclaration> parents = getParents(declaration);
-        for (ClassOrInterfaceDeclaration parent : parents) {
-            qualifiedName.append(parent.getNameAsString());
-            qualifiedName.append("::");
-        }
-
-        qualifiedName.append(declaration.getNameAsString());
-        return qualifiedName.toString();
-    }
-
-    private List<ClassOrInterfaceDeclaration> getParents(ClassOrInterfaceDeclaration declaration) {
-        List<ClassOrInterfaceDeclaration> parents = new ArrayList<>();
-
-        ClassOrInterfaceDeclaration current = declaration.findAncestor(ClassOrInterfaceDeclaration.class).orElse(null);
-
+        // Subir por los ancestros TypeDeclaration (clases externas, etc.)
+        TypeDeclaration<?> current = declaration.findAncestor(TypeDeclaration.class).orElse(null);
         while (current != null) {
-            parents.add(0, current);
-            current = current.findAncestor(ClassOrInterfaceDeclaration.class).orElse(null);
+            chain.add(0, current.getNameAsString());
+            current = current.findAncestor(TypeDeclaration.class).orElse(null);
         }
 
-        return parents;
+        return packagePrefix + String.join("::", chain);
     }
 }

@@ -5,7 +5,7 @@ import generador.application.project.AnalysisConfiguration;
 import generador.application.project.JavaLanguageVersion;
 import generador.core.domain.model.UmlModel;
 import generador.infrastructure.export.UmlModelMarkdownExporter;
-import main.java.generador.infrastructure.export.*;
+import generador.infrastructure.export.UmlModelPlantUmlExporter;
 import generador.infrastructure.parser.JavaProjectParser;
 
 import java.io.IOException;
