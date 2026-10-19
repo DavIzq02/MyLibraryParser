@@ -74,6 +74,14 @@ public final class UmlModelMarkdownExporter {
                 output.append("- `").append(packageName).append("`\n");
             output.append("\n");
         }
+
+        output.append("### Project class blacklist\n\n");
+        if (configuration.projectClassBlacklist().isEmpty()) output.append("_None._\n\n");
+        else {
+            for (String className : configuration.projectClassBlacklist())
+                output.append("- `").append(className).append("`\n");
+            output.append("\n");
+        }
     }
 
     private void appendClassifiers(StringBuilder output, UmlModel model) {

@@ -191,7 +191,8 @@ public class Main {
         AnalysisConfiguration config = new AnalysisConfiguration(
                 JavaLanguageVersion.JAVA_21,
                 List.of("java.math.BigDecimal", "java.util.UUID"), // Whitelist de tipos externos
-                List.of("com.ejemplo.config")                       // Blacklist de paquetes a ignorar
+                List.of("com.ejemplo.config"),                      // Blacklist de paquetes a ignorar
+                List.of("ClaseExcluida")                            // Blacklist de clases a ignorar
         );
 
         JavaProjectParser parser = new JavaProjectParser(config);

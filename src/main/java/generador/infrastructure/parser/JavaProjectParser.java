@@ -80,10 +80,7 @@ public final class JavaProjectParser {
             relationships.addAll(nestingParser.parse(compilationUnit, completeClassifierMap));
         }
 
-        List<UmlRelationship> strongestRelationships = generador.core.domain.relationship.UmlRelationshipFilter
-                .filterStrongest(relationships);
-
-        return new UmlModel(Map.copyOf(completeClassifierMap), Set.copyOf(strongestRelationships));
+        return new UmlModel(Map.copyOf(completeClassifierMap), Set.copyOf(relationships));
     }
 
     private boolean isBlacklisted(CompilationUnit compilationUnit) {

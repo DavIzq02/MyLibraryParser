@@ -18,40 +18,51 @@ import java.util.Set;
 
 public final class JavaOperationParser {
 
-    public List<UmlOperation> parse(MethodDeclaration declaration, JavaTypeResolver typeResolver, JavaTypeResolutionContext context) {
+    public List<UmlOperation> parse(MethodDeclaration declaration, JavaTypeResolver typeResolver,
+            JavaTypeResolutionContext context) {
         List<UmlParameter> parameters = new ArrayList<>();
         for (Parameter parameter : declaration.getParameters())
-            parameters.add(new UmlParameter(parameter.getNameAsString(), resolveType(parameter.getType(), typeResolver, context)));
+            parameters.add(new UmlParameter(parameter.getNameAsString(),
+                    resolveType(parameter.getType(), typeResolver, context)));
 
         return List.of(new UmlOperation(declaration.getNameAsString(), resolveVisibility(declaration),
                 resolveType(declaration.getType(), typeResolver, context), parameters, resolveModifiers(declaration),
                 java.util.Optional.empty(), false));
     }
 
-    public UmlOperation parseConstructor(ConstructorDeclaration declaration, JavaTypeResolver typeResolver, JavaTypeResolutionContext context) {
+    public UmlOperation parseConstructor(ConstructorDeclaration declaration, JavaTypeResolver typeResolver,
+            JavaTypeResolutionContext context) {
         List<UmlParameter> parameters = new ArrayList<>();
         for (Parameter parameter : declaration.getParameters())
-            parameters.add(new UmlParameter(parameter.getNameAsString(), resolveType(parameter.getType(), typeResolver, context)));
+            parameters.add(new UmlParameter(parameter.getNameAsString(),
+                    resolveType(parameter.getType(), typeResolver, context)));
 
         return new UmlOperation(declaration.getNameAsString(), resolveVisibility(declaration),
                 new UmlType.Primitive("void"), parameters, Set.of(), java.util.Optional.empty(), true);
     }
 
     private UmlVisibility resolveVisibility(MethodDeclaration declaration) {
-        if (declaration.hasModifier(Modifier.Keyword.PUBLIC)) return UmlVisibility.PUBLIC;
-        if (declaration.hasModifier(Modifier.Keyword.PROTECTED)) return UmlVisibility.PROTECTED;
-        if (declaration.hasModifier(Modifier.Keyword.PRIVATE)) return UmlVisibility.PRIVATE;
+        if (declaration.hasModifier(Modifier.Keyword.PUBLIC))
+            return UmlVisibility.PUBLIC;
+        if (declaration.hasModifier(Modifier.Keyword.PROTECTED))
+            return UmlVisibility.PROTECTED;
+        if (declaration.hasModifier(Modifier.Keyword.PRIVATE))
+            return UmlVisibility.PRIVATE;
 
         if (declaration.findAncestor(ClassOrInterfaceDeclaration.class)
-                .map(ClassOrInterfaceDeclaration::isInterface).orElse(false)) return UmlVisibility.PUBLIC;
+                .map(ClassOrInterfaceDeclaration::isInterface).orElse(false))
+            return UmlVisibility.PUBLIC;
 
         return UmlVisibility.PACKAGE;
     }
 
     private UmlVisibility resolveVisibility(ConstructorDeclaration declaration) {
-        if (declaration.hasModifier(Modifier.Keyword.PUBLIC)) return UmlVisibility.PUBLIC;
-        if (declaration.hasModifier(Modifier.Keyword.PROTECTED)) return UmlVisibility.PROTECTED;
-        if (declaration.hasModifier(Modifier.Keyword.PRIVATE)) return UmlVisibility.PRIVATE;
+        if (declaration.hasModifier(Modifier.Keyword.PUBLIC))
+            return UmlVisibility.PUBLIC;
+        if (declaration.hasModifier(Modifier.Keyword.PROTECTED))
+            return UmlVisibility.PROTECTED;
+        if (declaration.hasModifier(Modifier.Keyword.PRIVATE))
+            return UmlVisibility.PRIVATE;
 
         // En Java, los constructores de enum son privados por definicion
         if (declaration.findAncestor(com.github.javaparser.ast.body.EnumDeclaration.class).isPresent()) {
@@ -63,10 +74,14 @@ public final class JavaOperationParser {
 
     private Set<UmlModifier> resolveModifiers(MethodDeclaration declaration) {
         Set<UmlModifier> modifiers = new HashSet<>();
-        if (declaration.hasModifier(Modifier.Keyword.STATIC)) modifiers.add(UmlModifier.STATIC);
-        if (declaration.hasModifier(Modifier.Keyword.ABSTRACT)) modifiers.add(UmlModifier.ABSTRACT);
-        if (declaration.hasModifier(Modifier.Keyword.FINAL)) modifiers.add(UmlModifier.FINAL);
-        if (declaration.hasModifier(Modifier.Keyword.DEFAULT)) modifiers.add(UmlModifier.DEFAULT);
+        if (declaration.hasModifier(Modifier.Keyword.STATIC))
+            modifiers.add(UmlModifier.STATIC);
+        if (declaration.hasModifier(Modifier.Keyword.ABSTRACT))
+            modifiers.add(UmlModifier.ABSTRACT);
+        if (declaration.hasModifier(Modifier.Keyword.FINAL))
+            modifiers.add(UmlModifier.FINAL);
+        if (declaration.hasModifier(Modifier.Keyword.DEFAULT))
+            modifiers.add(UmlModifier.DEFAULT);
         return Set.copyOf(modifiers);
     }
 

@@ -32,8 +32,7 @@ public class UmlModelPlantUmlExporterTest {
                 Collections.emptyList(),
                 Collections.emptyList(),
                 Optional.empty(),
-                Optional.empty()
-        );
+                Optional.empty());
     }
 
     private static void testSingleConnection() throws IOException {
@@ -86,14 +85,15 @@ public class UmlModelPlantUmlExporterTest {
         Files.deleteIfExists(tempFile);
 
         // Outer recibe 2 conexiones: 1 herencia y 1 nesting.
-        // Deben tener direcciones distintas para no sobrescribirse en el mismo punto gráfico.
+        // Deben tener direcciones distintas para no sobrescribirse en el mismo punto
+        // gráfico.
         // Herencia (prioridad 1) obtiene "-up-|>"
-        // Nesting (prioridad 4) obtiene "+-right-"
+        // Nesting obtiene "com__example__Inner +-- com__example__Outer"
         if (!content.contains("com__example__Sub -up-|> com__example__Outer")) {
             throw new AssertionError("Fallo: Herencia no encontrada con -up-|>. Contenido:\n" + content);
         }
-        if (!content.contains("com__example__Inner +-right- com__example__Outer")) {
-            throw new AssertionError("Fallo: Nesting no encontrado con +-right-. Contenido:\n" + content);
+        if (!content.contains("com__example__Inner +-- com__example__Outer")) {
+            throw new AssertionError("Fallo: Nesting no encontrado con +--. Contenido:\n" + content);
         }
     }
 
@@ -131,10 +131,15 @@ public class UmlModelPlantUmlExporterTest {
 
         // Las 4 direcciones deben estar presentes: up, right, down, left
         // Y la 5ta debe usar --up-|> con doble guión para espaciar el nivel
-        if (!content.contains("-up-|>")) throw new AssertionError("Falta -up-|>");
-        if (!content.contains("-right-|>")) throw new AssertionError("Falta -right-|>");
-        if (!content.contains("-down-|>")) throw new AssertionError("Falta -down-|>");
-        if (!content.contains("-left-|>")) throw new AssertionError("Falta -left-|>");
-        if (!content.contains("--up-|>")) throw new AssertionError("Falta --up-|> para la 5ta conexión");
+        if (!content.contains("-up-|>"))
+            throw new AssertionError("Falta -up-|>");
+        if (!content.contains("-right-|>"))
+            throw new AssertionError("Falta -right-|>");
+        if (!content.contains("-down-|>"))
+            throw new AssertionError("Falta -down-|>");
+        if (!content.contains("-left-|>"))
+            throw new AssertionError("Falta -left-|>");
+        if (!content.contains("--up-|>"))
+            throw new AssertionError("Falta --up-|> para la 5ta conexión");
     }
 }

@@ -33,16 +33,21 @@ public final class JavaPropertyParser {
     }
 
     private UmlVisibility resolveVisibility(FieldDeclaration declaration) {
-        if (declaration.hasModifier(Modifier.Keyword.PUBLIC)) return UmlVisibility.PUBLIC;
-        if (declaration.hasModifier(Modifier.Keyword.PROTECTED)) return UmlVisibility.PROTECTED;
-        if (declaration.hasModifier(Modifier.Keyword.PRIVATE)) return UmlVisibility.PRIVATE;
+        if (declaration.hasModifier(Modifier.Keyword.PUBLIC))
+            return UmlVisibility.PUBLIC;
+        if (declaration.hasModifier(Modifier.Keyword.PROTECTED))
+            return UmlVisibility.PROTECTED;
+        if (declaration.hasModifier(Modifier.Keyword.PRIVATE))
+            return UmlVisibility.PRIVATE;
         return UmlVisibility.PACKAGE;
     }
 
     private Set<UmlModifier> resolveModifiers(FieldDeclaration declaration) {
         Set<UmlModifier> modifiers = new HashSet<>();
-        if (declaration.hasModifier(Modifier.Keyword.STATIC)) modifiers.add(UmlModifier.STATIC);
-        if (declaration.hasModifier(Modifier.Keyword.FINAL)) modifiers.add(UmlModifier.FINAL);
+        if (declaration.hasModifier(Modifier.Keyword.STATIC))
+            modifiers.add(UmlModifier.STATIC);
+        if (declaration.hasModifier(Modifier.Keyword.FINAL))
+            modifiers.add(UmlModifier.FINAL);
         return Set.copyOf(modifiers);
     }
 

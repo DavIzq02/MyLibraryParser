@@ -262,7 +262,7 @@ public final class JavaRelationshipParser {
      * Construye la clave cualificada recorriendo la cadena de ancestros
      * TypeDeclaration, reproduciendo exactamente la forma en que
      * JavaClassifierParser construye la clave en el mapa:
-     *   pkg::OuterClass::InnerClass
+     * pkg::OuterClass::InnerClass
      */
     private String resolveQualifiedName(TypeDeclaration<?> declaration, JavaTypeResolutionContext context) {
         List<String> chain = new ArrayList<>();
@@ -297,4 +297,4 @@ public final class JavaRelationshipParser {
     private String resolveQualifiedName(RecordDeclaration declaration, JavaTypeResolutionContext context) {
         return resolveQualifiedName((TypeDeclaration<?>) declaration, context);
     }
-}
+}

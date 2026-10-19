@@ -34,7 +34,8 @@ public final class JavaClassifierParser {
     private final JavaOperationParser operationParser;
     private final Set<String> excludedClasses;
 
-    public JavaClassifierParser(JavaPropertyParser propertyParser, JavaOperationParser operationParser, Set<String> excludedClasses) {
+    public JavaClassifierParser(JavaPropertyParser propertyParser, JavaOperationParser operationParser,
+            Set<String> excludedClasses) {
         this.propertyParser = propertyParser;
         this.operationParser = operationParser;
         this.excludedClasses = excludedClasses == null ? Set.of() : Set.copyOf(excludedClasses);
@@ -60,8 +61,8 @@ public final class JavaClassifierParser {
     private void parseType(TypeDeclaration<?> declaration, UmlNamespace namespace, JavaTypeResolver typeResolver,
             JavaTypeResolutionContext context, List<UmlClassifier> classifiers) {
 
-        String className = declaration.getNameAsString();
-        if (excludedClasses.contains(className) || excludedClasses.contains(declaration.getFullyQualifiedName().orElse(""))) return;
+        if (isExcluded(declaration))
+            return;
 
         /*
          * Este es el punto importante del cambio.
@@ -74,6 +75,7 @@ public final class JavaClassifierParser {
          * Ahora también conoce el tipo que estamos
          * analizando actualmente.
          */
+        String className = declaration.getNameAsString();
         String currentTypeQualifiedName = namespace.qualifiedNameOf(className);
         JavaTypeResolutionContext classifierContext = context.withCurrentTypeQualifiedName(currentTypeQualifiedName);
         UmlClassifier classifier = null;
@@ -90,7 +92,8 @@ public final class JavaClassifierParser {
             classifier = parseAnnotation(annotationDeclaration, namespace, typeResolver, classifierContext);
         }
 
-        if (classifier == null) return;
+        if (classifier == null)
+            return;
         classifiers.add(classifier);
         UmlNamespace childNamespace = namespace.child(classifier.name());
 
@@ -103,9 +106,10 @@ public final class JavaClassifierParser {
             parseType(nestedType.declaration(), childNamespace, typeResolver, context, classifiers);
     }
 
-    private void parseTypeStructure(TypeDeclaration<?> declaration, UmlNamespace namespace, List<UmlClassifier> classifiers) {
-        String className = declaration.getNameAsString();
-        if (excludedClasses.contains(className) || excludedClasses.contains(declaration.getFullyQualifiedName().orElse(""))) return;
+    private void parseTypeStructure(TypeDeclaration<?> declaration, UmlNamespace namespace,
+            List<UmlClassifier> classifiers) {
+        if (isExcluded(declaration))
+            return;
 
         UmlClassifier classifier = null;
 
@@ -121,7 +125,8 @@ public final class JavaClassifierParser {
             classifier = parseAnnotationStructure(annotationDeclaration, namespace);
         }
 
-        if (classifier == null) return;
+        if (classifier == null)
+            return;
         classifiers.add(classifier);
         UmlNamespace childNamespace = namespace.child(classifier.name());
 
@@ -129,16 +134,36 @@ public final class JavaClassifierParser {
             parseTypeStructure(nestedType.declaration(), childNamespace, classifiers);
     }
 
+    private boolean isExcluded(TypeDeclaration<?> declaration) {
+        if (excludedClasses.isEmpty())
+            return false;
+        String className = declaration.getNameAsString();
+        if (excludedClasses.contains(className))
+            return true;
+
+        String fullyQualified = declaration.getFullyQualifiedName().orElse("");
+        if (!fullyQualified.isEmpty()) {
+            if (excludedClasses.contains(fullyQualified))
+                return true;
+            if (excludedClasses.contains(fullyQualified.replace(".", "::")))
+                return true;
+        }
+        return false;
+    }
+
     private List<BodyDeclarationType> nestedTypes(TypeDeclaration<?> declaration) {
         List<BodyDeclarationType> nestedTypes = new ArrayList<>();
         for (BodyDeclaration<?> member : declaration.getMembers())
-            if (member instanceof TypeDeclaration<?> nestedType) nestedTypes.add(new BodyDeclarationType(nestedType));
+            if (member instanceof TypeDeclaration<?> nestedType)
+                nestedTypes.add(new BodyDeclarationType(nestedType));
         return nestedTypes;
     }
 
-    private record BodyDeclarationType(TypeDeclaration<?> declaration) {}
+    private record BodyDeclarationType(TypeDeclaration<?> declaration) {
+    }
 
-    private UmlClass parseClass(ClassOrInterfaceDeclaration declaration, UmlNamespace namespace, JavaTypeResolver typeResolver,
+    private UmlClass parseClass(ClassOrInterfaceDeclaration declaration, UmlNamespace namespace,
+            JavaTypeResolver typeResolver,
             JavaTypeResolutionContext context) {
 
         List<String> templateParameters = resolveTemplateParameters(declaration);
@@ -147,7 +172,8 @@ public final class JavaClassifierParser {
         Set<String> constructorParameters = resolveConstructorParameters(declaration);
 
         for (var field : declaration.getFields()) {
-            List<UmlProperty> parsedProperties = propertyParser.parse(field, typeResolver, classifierContext, constructorParameters);
+            List<UmlProperty> parsedProperties = propertyParser.parse(field, typeResolver, classifierContext,
+                    constructorParameters);
             properties.addAll(parsedProperties);
         }
 
@@ -158,14 +184,16 @@ public final class JavaClassifierParser {
         for (var method : declaration.getMethods())
             operations.addAll(operationParser.parse(method, typeResolver, classifierContext));
 
-        return new UmlClass(declaration.getNameAsString(), namespace, resolveVisibility(declaration), templateParameters,
+        return new UmlClass(declaration.getNameAsString(), namespace, resolveVisibility(declaration),
+                templateParameters,
                 resolveModifiers(declaration), properties, operations, Optional.empty(), Optional.empty());
     }
 
     private Set<String> resolveConstructorParameters(ClassOrInterfaceDeclaration declaration) {
         Set<String> parameters = new java.util.HashSet<>();
         for (var constructor : declaration.getConstructors())
-            for (Parameter parameter : constructor.getParameters()) parameters.add(parameter.getNameAsString());
+            for (Parameter parameter : constructor.getParameters())
+                parameters.add(parameter.getNameAsString());
         return Set.copyOf(parameters);
     }
 
@@ -185,7 +213,8 @@ public final class JavaClassifierParser {
         for (var method : declaration.getMethods())
             operations.addAll(operationParser.parse(method, typeResolver, classifierContext));
 
-        return new UmlInterface(declaration.getNameAsString(), namespace, resolveVisibility(declaration), templateParameters,
+        return new UmlInterface(declaration.getNameAsString(), namespace, resolveVisibility(declaration),
+                templateParameters,
                 resolveModifiers(declaration), List.of(), operations, Optional.empty(), Optional.empty());
     }
 
@@ -206,7 +235,8 @@ public final class JavaClassifierParser {
         Set<String> constructorParameters = resolveConstructorParameters(declaration);
 
         for (var field : declaration.getFields()) {
-            List<UmlProperty> parsedProperties = propertyParser.parse(field, typeResolver, context, constructorParameters);
+            List<UmlProperty> parsedProperties = propertyParser.parse(field, typeResolver, context,
+                    constructorParameters);
             properties.addAll(parsedProperties);
         }
 
@@ -224,7 +254,8 @@ public final class JavaClassifierParser {
     private Set<String> resolveConstructorParameters(EnumDeclaration declaration) {
         Set<String> parameters = new java.util.HashSet<>();
         for (var constructor : declaration.getConstructors())
-            for (Parameter parameter : constructor.getParameters()) parameters.add(parameter.getNameAsString());
+            for (Parameter parameter : constructor.getParameters())
+                parameters.add(parameter.getNameAsString());
         return Set.copyOf(parameters);
     }
 
@@ -287,9 +318,10 @@ public final class JavaClassifierParser {
          * 4. Accessors implícitos del record.
          */
         for (Parameter component : declaration.getParameters()) {
-            boolean accessorExists = operations.stream().anyMatch(operation ->
-                    !operation.isConstructor() && operation.name().equals(component.getNameAsString()) &&
-                    operation.parameters().isEmpty());
+            boolean accessorExists = operations.stream()
+                    .anyMatch(operation -> !operation.isConstructor()
+                            && operation.name().equals(component.getNameAsString()) &&
+                            operation.parameters().isEmpty());
 
             if (!accessorExists)
                 operations.add(new UmlOperation(component.getNameAsString(), UmlVisibility.PUBLIC,
@@ -313,7 +345,8 @@ public final class JavaClassifierParser {
 
         for (BodyDeclaration<?> member : declaration.getMembers()) {
             if (member instanceof AnnotationMemberDeclaration annotationMember) {
-                UmlType returnType = typeResolver.resolve(annotationMember.getType(), context.withTemplateParameters(List.of()));
+                UmlType returnType = typeResolver.resolve(annotationMember.getType(),
+                        context.withTemplateParameters(List.of()));
                 operations.add(new UmlOperation(annotationMember.getNameAsString(), UmlVisibility.PUBLIC, returnType,
                         List.of(), Set.of(), Optional.empty(), false));
             }
@@ -335,60 +368,81 @@ public final class JavaClassifierParser {
     }
 
     private UmlNamespace resolveNamespace(CompilationUnit compilationUnit) {
-        if (compilationUnit.getPackageDeclaration().isEmpty()) return UmlNamespace.root();
+        if (compilationUnit.getPackageDeclaration().isEmpty())
+            return UmlNamespace.root();
 
         String packageName = compilationUnit.getPackageDeclaration().get().getNameAsString();
         return UmlNamespace.of(packageName.split("\\."));
     }
 
     private UmlVisibility resolveVisibility(ClassOrInterfaceDeclaration declaration) {
-        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.PUBLIC)) return UmlVisibility.PUBLIC;
-        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.PROTECTED)) return UmlVisibility.PROTECTED;
-        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.PRIVATE)) return UmlVisibility.PRIVATE;
+        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.PUBLIC))
+            return UmlVisibility.PUBLIC;
+        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.PROTECTED))
+            return UmlVisibility.PROTECTED;
+        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.PRIVATE))
+            return UmlVisibility.PRIVATE;
         return UmlVisibility.PACKAGE;
     }
 
     private UmlVisibility resolveVisibility(EnumDeclaration declaration) {
-        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.PUBLIC)) return UmlVisibility.PUBLIC;
-        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.PROTECTED)) return UmlVisibility.PROTECTED;
-        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.PRIVATE)) return UmlVisibility.PRIVATE;
+        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.PUBLIC))
+            return UmlVisibility.PUBLIC;
+        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.PROTECTED))
+            return UmlVisibility.PROTECTED;
+        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.PRIVATE))
+            return UmlVisibility.PRIVATE;
         return UmlVisibility.PACKAGE;
     }
 
     private UmlVisibility resolveVisibility(RecordDeclaration declaration) {
-        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.PUBLIC)) return UmlVisibility.PUBLIC;
-        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.PROTECTED)) return UmlVisibility.PROTECTED;
-        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.PRIVATE)) return UmlVisibility.PRIVATE;
+        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.PUBLIC))
+            return UmlVisibility.PUBLIC;
+        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.PROTECTED))
+            return UmlVisibility.PROTECTED;
+        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.PRIVATE))
+            return UmlVisibility.PRIVATE;
         return UmlVisibility.PACKAGE;
     }
 
     private UmlVisibility resolveVisibility(AnnotationDeclaration declaration) {
-        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.PUBLIC)) return UmlVisibility.PUBLIC;
-        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.PROTECTED)) return UmlVisibility.PROTECTED;
-        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.PRIVATE)) return UmlVisibility.PRIVATE;
+        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.PUBLIC))
+            return UmlVisibility.PUBLIC;
+        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.PROTECTED))
+            return UmlVisibility.PROTECTED;
+        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.PRIVATE))
+            return UmlVisibility.PRIVATE;
         return UmlVisibility.PACKAGE;
     }
 
     private Set<UmlModifier> resolveModifiers(ClassOrInterfaceDeclaration declaration) {
         Set<UmlModifier> modifiers = new java.util.HashSet<>();
-        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.ABSTRACT)) modifiers.add(UmlModifier.ABSTRACT);
-        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.FINAL)) modifiers.add(UmlModifier.FINAL);
-        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.STATIC)) modifiers.add(UmlModifier.STATIC);
+        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.ABSTRACT))
+            modifiers.add(UmlModifier.ABSTRACT);
+        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.FINAL))
+            modifiers.add(UmlModifier.FINAL);
+        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.STATIC))
+            modifiers.add(UmlModifier.STATIC);
         return Set.copyOf(modifiers);
     }
 
     private Set<UmlModifier> resolveModifiers(EnumDeclaration declaration) {
         Set<UmlModifier> modifiers = new java.util.HashSet<>();
-        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.ABSTRACT)) modifiers.add(UmlModifier.ABSTRACT);
-        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.FINAL)) modifiers.add(UmlModifier.FINAL);
-        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.STATIC)) modifiers.add(UmlModifier.STATIC);
+        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.ABSTRACT))
+            modifiers.add(UmlModifier.ABSTRACT);
+        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.FINAL))
+            modifiers.add(UmlModifier.FINAL);
+        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.STATIC))
+            modifiers.add(UmlModifier.STATIC);
         return Set.copyOf(modifiers);
     }
 
     private Set<UmlModifier> resolveModifiers(RecordDeclaration declaration) {
         Set<UmlModifier> modifiers = new java.util.HashSet<>();
-        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.ABSTRACT)) modifiers.add(UmlModifier.ABSTRACT);
-        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.FINAL)) modifiers.add(UmlModifier.FINAL);
+        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.ABSTRACT))
+            modifiers.add(UmlModifier.ABSTRACT);
+        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.FINAL))
+            modifiers.add(UmlModifier.FINAL);
         return Set.copyOf(modifiers);
     }
 }
