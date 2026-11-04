@@ -39,8 +39,8 @@ public final class JavaRelationshipParser {
 
             parseExtendedTypes(declaration, source, typeResolver, context, relationships);
             parseImplementedTypes(declaration, source, typeResolver, context, relationships);
-            parseProperties(source, relationships);
-            parseOperations(source, relationships);
+            parseProperties(source, relationships, typeResolver);
+            parseOperations(source, relationships, typeResolver);
         }
 
         for (EnumDeclaration declaration : compilationUnit.findAll(EnumDeclaration.class)) {
@@ -52,15 +52,15 @@ public final class JavaRelationshipParser {
 
             declaration.getImplementedTypes().forEach(type -> {
                 UmlType resolvedType = typeResolver.resolve(type, context);
-                UmlClassifier target = resolveRelationshipTarget(resolvedType);
+                UmlClassifier target = resolveRelationshipTarget(resolvedType, typeResolver);
                 if (target != null) {
                     addRelationshipIfAbsent(new UmlRealization(source, target, Optional.empty(), Optional.empty()),
                             relationships);
                 }
             });
 
-            parseProperties(source, relationships);
-            parseOperations(source, relationships);
+            parseProperties(source, relationships, typeResolver);
+            parseOperations(source, relationships, typeResolver);
         }
 
         for (RecordDeclaration declaration : compilationUnit.findAll(RecordDeclaration.class)) {
@@ -72,15 +72,15 @@ public final class JavaRelationshipParser {
 
             declaration.getImplementedTypes().forEach(type -> {
                 UmlType resolvedType = typeResolver.resolve(type, context);
-                UmlClassifier target = resolveRelationshipTarget(resolvedType);
+                UmlClassifier target = resolveRelationshipTarget(resolvedType, typeResolver);
                 if (target != null) {
                     addRelationshipIfAbsent(new UmlRealization(source, target, Optional.empty(), Optional.empty()),
                             relationships);
                 }
             });
 
-            parseProperties(source, relationships);
-            parseOperations(source, relationships);
+            parseProperties(source, relationships, typeResolver);
+            parseOperations(source, relationships, typeResolver);
         }
 
         return List.copyOf(relationships);
@@ -91,7 +91,7 @@ public final class JavaRelationshipParser {
         declaration.getExtendedTypes()
                 .forEach(type -> {
                     UmlType resolvedType = typeResolver.resolve(type, context);
-                    UmlClassifier target = resolveRelationshipTarget(resolvedType);
+                    UmlClassifier target = resolveRelationshipTarget(resolvedType, typeResolver);
 
                     if (target != null) {
                         addRelationshipIfAbsent(
@@ -106,7 +106,7 @@ public final class JavaRelationshipParser {
         declaration.getImplementedTypes()
                 .forEach(type -> {
                     UmlType resolvedType = typeResolver.resolve(type, context);
-                    UmlClassifier target = resolveRelationshipTarget(resolvedType);
+                    UmlClassifier target = resolveRelationshipTarget(resolvedType, typeResolver);
 
                     if (target != null) {
                         addRelationshipIfAbsent(new UmlRealization(source, target, Optional.empty(), Optional.empty()),
@@ -115,9 +115,9 @@ public final class JavaRelationshipParser {
                 });
     }
 
-    private void parseProperties(UmlClassifier source, List<UmlRelationship> relationships) {
+    private void parseProperties(UmlClassifier source, List<UmlRelationship> relationships, JavaTypeResolver typeResolver) {
         for (UmlProperty property : source.properties()) {
-            List<UmlClassifier> targets = resolveAssociationTargets(property.type());
+            List<UmlClassifier> targets = resolveAssociationTargets(property.type(), typeResolver);
 
             for (UmlClassifier target : targets) {
                 // CASO 4 y Multiplicidad: Detecta arreglos/colecciones para inyectar "*"
@@ -130,26 +130,26 @@ public final class JavaRelationshipParser {
         }
     }
 
-    private void parseOperations(UmlClassifier source, List<UmlRelationship> relationships) {
+    private void parseOperations(UmlClassifier source, List<UmlRelationship> relationships, JavaTypeResolver typeResolver) {
         for (UmlOperation operation : source.operations()) {
             // CASO 24: Extraer dependencias efímeras desde retornos y parámetros
-            addDependencies(source, operation.returnType(), relationships);
+            addDependencies(source, operation.returnType(), relationships, typeResolver);
 
             operation.parameters()
-                    .forEach(parameter -> addDependencies(source, parameter.type(), relationships));
+                    .forEach(parameter -> addDependencies(source, parameter.type(), relationships, typeResolver));
         }
     }
 
-    private void addDependencies(UmlClassifier source, UmlType type, List<UmlRelationship> relationships) {
-        List<UmlClassifier> targets = resolveDependencyTargets(type);
+    private void addDependencies(UmlClassifier source, UmlType type, List<UmlRelationship> relationships, JavaTypeResolver typeResolver) {
+        List<UmlClassifier> targets = resolveDependencyTargets(type, typeResolver);
 
         for (UmlClassifier target : targets) {
             // Evita auto-dependencias y PREVIENE que una dependencia sobreescriba la Herencia
             if (source.qualifiedName().equals(target.qualifiedName()) || hasStrongerRelationship(source, target, relationships)) {
                 continue;
             }
-            
-            // Inyección de estereotipo <<use>> como lo requiere el profesor para dependencias efímeras.
+
+            // Inyección de estereotipo <<use>> para dependencias efímeras.
             addRelationshipIfAbsent(new UmlDependency(source, target, Optional.of("<<use>>"), Optional.empty()),
                     relationships);
         }
@@ -209,7 +209,7 @@ public final class JavaRelationshipParser {
         return (type instanceof UmlType.Array || type instanceof UmlType.Parameterized);
     }
 
-    private List<UmlClassifier> resolveAssociationTargets(UmlType type) {
+    private List<UmlClassifier> resolveAssociationTargets(UmlType type, JavaTypeResolver typeResolver) {
         List<UmlClassifier> targets = new ArrayList<>();
 
         if (type instanceof UmlType.Reference reference) {
@@ -220,21 +220,35 @@ public final class JavaRelationshipParser {
             return targets;
         }
 
+        if (type instanceof UmlType.ExternalReference externalRef && typeResolver != null) {
+            UmlClassifier classifier = typeResolver.resolveWhitelistedClassifier(externalRef.qualifiedName());
+            if (classifier != null && !(classifier instanceof UmlEnumeration)) {
+                targets.add(classifier);
+            }
+            return targets;
+        }
+
         if (type instanceof UmlType.Parameterized parameterized) {
+            if (parameterized.base() instanceof UmlType.ExternalReference externalBase && typeResolver != null) {
+                UmlClassifier baseClassifier = typeResolver.resolveWhitelistedClassifier(externalBase.qualifiedName());
+                if (baseClassifier != null && !(baseClassifier instanceof UmlEnumeration)) {
+                    targets.add(baseClassifier);
+                }
+            }
             for (UmlType typeArgument : parameterized.typeArguments()) {
-                targets.addAll(resolveAssociationTargets(typeArgument));
+                targets.addAll(resolveAssociationTargets(typeArgument, typeResolver));
             }
         }
 
         // Desempaqueta también si es Array (varargs o [])
         if (type instanceof UmlType.Array arrayType) {
-            targets.addAll(resolveAssociationTargets(arrayType.elementType()));
+            targets.addAll(resolveAssociationTargets(arrayType.elementType(), typeResolver));
         }
 
         return targets;
     }
 
-    private List<UmlClassifier> resolveDependencyTargets(UmlType type) {
+    private List<UmlClassifier> resolveDependencyTargets(UmlType type, JavaTypeResolver typeResolver) {
         List<UmlClassifier> targets = new ArrayList<>();
 
         if (type instanceof UmlType.Reference reference) {
@@ -242,27 +256,44 @@ public final class JavaRelationshipParser {
             return targets;
         }
 
+        if (type instanceof UmlType.ExternalReference externalRef && typeResolver != null) {
+            UmlClassifier classifier = typeResolver.resolveWhitelistedClassifier(externalRef.qualifiedName());
+            if (classifier != null) {
+                targets.add(classifier);
+            }
+            return targets;
+        }
+
         if (type instanceof UmlType.Parameterized parameterized) {
+            if (parameterized.base() instanceof UmlType.ExternalReference externalBase && typeResolver != null) {
+                UmlClassifier baseClassifier = typeResolver.resolveWhitelistedClassifier(externalBase.qualifiedName());
+                if (baseClassifier != null) {
+                    targets.add(baseClassifier);
+                }
+            }
             for (UmlType typeArgument : parameterized.typeArguments()) {
-                targets.addAll(resolveDependencyTargets(typeArgument));
+                targets.addAll(resolveDependencyTargets(typeArgument, typeResolver));
             }
         }
 
         if (type instanceof UmlType.Array arrayType) {
-            targets.addAll(resolveDependencyTargets(arrayType.elementType()));
+            targets.addAll(resolveDependencyTargets(arrayType.elementType(), typeResolver));
         }
 
         return targets;
     }
 
-    private UmlClassifier resolveRelationshipTarget(UmlType type) {
+    private UmlClassifier resolveRelationshipTarget(UmlType type, JavaTypeResolver typeResolver) {
         if (type instanceof UmlType.Reference reference) {
             return reference.classifier();
         }
 
-        if (type instanceof UmlType.Parameterized parameterized
-                && parameterized.base() instanceof UmlType.Reference reference) {
-            return reference.classifier();
+        if (type instanceof UmlType.ExternalReference externalRef && typeResolver != null) {
+            return typeResolver.resolveWhitelistedClassifier(externalRef.qualifiedName());
+        }
+
+        if (type instanceof UmlType.Parameterized parameterized) {
+            return resolveRelationshipTarget(parameterized.base(), typeResolver);
         }
 
         return null;

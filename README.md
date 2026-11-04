@@ -34,6 +34,7 @@ El flujo de trabajo del aplicativo se divide en tres etapas fundamentales:
      - **Filtrado de Dominio (`UmlRelationshipFilter`):** Conservación estricta de la relación más fuerte por cada par de clasificadores y eliminación de dependencias redundantes entre clases e interfaces anidadas dentro de un mismo contenedor.
 3. **Salida (Output):**
    - **PlantUML (`.puml`):** Código de diagramado con estética profesional para Java 17/21: paleta de colores pastel diferenciada (interfaces verde pastel `#D5F5E3`, clases abstractas naranja `#FFE5CC`, records azul `#D0E1FD`, tipos externos gris claro `#EAECEE`), enrutamiento ortogonal (`skinparam linetype ortho`), tipografía Helvetica, supresión de sombras, renderizado modular por paquetes y estereotipos explícitos (`<<Record>>`, `<<Abstract>>`, `<<Interface>>`, `<<external>>`).
+     - **Paquete `Java` para Lista Blanca (Whitelist):** Las clases Java autorizadas en la lista blanca (`javaPackageWhitelist` / `whiteList`, como `BigDecimal`, `UUID`, `OffsetDateTime`, etc.) se modelan encapsuladas dentro de un paquete/folder raíz denominado **`Java`**, estructuradas ordenadamente en sus subpaquetes correspondientes (`math`, `time`, `util`, etc.) con estereotipo `<<external>>`. Además, se trazan automáticamente las relaciones estructurales (`-->`, `o--`) o dependencias (`<<use>>`) con sus multiplicidades hacia las clases del proyecto que las consumen.
    - **Markdown (`uml-model-output.md`):** Reporte técnico estructurado donde las métricas de relaciones reflejan con exactitud el modelo filtrado final, complementado por tablas con literales de enumeración, atributos, métodos y una matriz de relaciones detallada con multiplicidades (`Source (Mult)`, `Target (Mult)`) y especificación de acoplamiento (`<<use>>`, `COMPOSITE`, `SHARED`, etc.).
 
 ---
@@ -44,7 +45,7 @@ En cumplimiento de las especificaciones y casos borde del documento de requerimi
 
 | Caso | Denominación | Descripción de la Regla y Solución Implementada |
 | :--- | :--- | :--- |
-| **CASO 3** | **Diferenciación Fina de Posesión** | Distingue entre **Composición** (`*--`), **Agregación** (`o--`) y **Asociación Simple** (`-->`). Se marca composición cuando el atributo se inicializa *inline* (`new Objeto()`) o es `final` sin recibir inyección por constructor. Se clasifica como agregación si el tipo es una colección o arreglo. Las enumeraciones se excluyen de relaciones de agregación/composición convencionales. |
+| **CASO 3** | **Diferenciación Fina de Posesión** | Distingue entre **Composición** (`*--`), **Agregación** (`o--`) y **Asociación Simple** (`-->`). Se marca composición cuando el atributo se inicializa *inline* (`new Objeto()`) o es `final` sin recibir inyección por constructor. Se clasifica como agregación si el tipo es una colección o arreglo. Las enumeraciones y los tipos externos de librerías/JDK se excluyen de composición interna. |
 | **CASO 4** | **Multiplicidad en Relaciones** | Evalúa el tipo de la propiedad: si corresponde a un arreglo o colección parametrizada, asigna multiplicidad de destino `*` y origen `1` (`"1" --> "*"`). Para referencias unitarias asigna `"1" --> "1"`. |
 | **CASO 7** | **Genéricos Profundos** | Desempaqueta y resuelve recursivamente los argumentos de tipo dentro de colecciones complejas (ej. `Map<String, List<MiClase>>`), garantizando que la referencia al tipo interno del dominio sea identificada. |
 | **CASO 8** | **Wildcards Acotados** | Procesa comodines acotados (`? extends T` y `? super T`), extrayendo el tipo límite superior o inferior para resolver la dependencia o asociación correspondiente en lugar de fallar o marcar un tipo desconocido. |
@@ -56,6 +57,7 @@ En cumplimiento de las especificaciones y casos borde del documento de requerimi
 | **CASO 17** | **Constantes en Interfaces** | Parsea los campos declarados dentro de interfaces tratándolos como propiedades (implícitamente `public static final`), permitiendo su visualización en diagramas UML y reportes Markdown. |
 | **CASO 23** | **Ascenso Seguro de Ancestros Anidados** | Utiliza `findAncestor(TypeDeclaration.class)` para ascender jerárquicamente a través de los contenedores léxicos, omitiendo bloques de métodos, clases anónimas o clases locales intermedias. |
 | **CASO 24** | **Dependencias Efímeras y Supresión** | Extrae dependencias efímeras desde tipos de retorno y parámetros de métodos asignándoles el estereotipo `<<use>>`. Aplica el método `hasStrongerRelationship`: si ya existe herencia, realización o asociación estructural entre ambas clases, se descarta la dependencia redundante. |
+| **Paquete Java** | **Modelado de Clases Java Whitelist en PUML** | Las clases Java provenientes de la lista blanca se encapsulan dentro de un paquete raíz `Java`, organizadas en subpaquetes según su espacio de nombres (`math`, `time`, `util`, etc.) con estereotipo `<<external>>`. El motor de relaciones identifica atributos, colecciones, retornos y parámetros que referencian estos tipos externos y dibuja sus relaciones (`-->`, `o--`, `..>`) y multiplicidades con las clases del proyecto que las consumen. |
 | **Filtro** | **Relación más Fuerte por Par (`UmlRelationshipFilter`)** | Garantiza que para cada par no ordenado `{A, B}` sólo persista la relación de mayor fuerza según la jerarquía UML (`Nesting` > `Realization` > `Generalization` > `Composite` > `Shared` > `Association` > `Dependency`). Suprime además enlaces redundantes entre clases e interfaces anidadas en el mismo clasificador contenedor. |
 
 ---
@@ -76,7 +78,7 @@ El proyecto se organiza en 4 grandes capas (paquetes principales):
    - La capa `service/` está preparada para alojar las implementaciones de los casos de uso.
 3. **`infrastructure` (Infraestructura / Adaptadores):**
    - Implementa los puertos de salida definidos en la capa de aplicación.
-   - Aquí residen los detalles técnicos y la integración con herramientas externas: analizadores de código fuente (**JavaParser 3.28.2**), exportadores (PlantUML con paleta pastel, Markdown con tablas enriquecidas), sistemas de archivos y telemetría.
+   - Aquí residen los detalles técnicos y la integración con herramientas externas: analizadores de código fuente (**JavaParser 3.28.2**), exportadores (PlantUML con paleta pastel y paquete Java para lista blanca, Markdown con tablas enriquecidas), sistemas de archivos y telemetría.
 4. **`presentation` (Presentación):**
    - El punto de entrada para el usuario al interactuar con la aplicación (CLI, API REST o Interfaz Gráfica).
    - Invoca los casos de uso de la capa de aplicación a través de los puertos de entrada.
@@ -157,7 +159,7 @@ src/main/java/generador/
 │   ├── codesmell/              # Detectores de code smells (preparado)
 │   ├── export/                 # Adaptadores de exportación
 │   │   ├── UmlModelMarkdownExporter.java   # Exporta a .md con métricas sincronizadas y multiplicidades
-│   │   └── UmlModelPlantUmlExporter.java   # Exporta a .puml con paleta pastel y líneas ortogonales
+│   │   └── UmlModelPlantUmlExporter.java   # Exporta a .puml con paquete Java para whitelist y paleta pastel
 │   ├── layout/                 # Manejo de layouts de diagrama (preparado)
 │   ├── parser/                 # Analizadores con JavaParser 3.28.2
 │   │   ├── JavaClassifierParser.java       # Extracción de clases, records, interfaces y constantes
@@ -168,7 +170,7 @@ src/main/java/generador/
 │   │   ├── JavaRelationshipParser.java     # Resolución de enlaces, multiplicidad y dependencias <<use>>
 │   │   ├── JavaSourceParser.java           # Parseo de archivos individuales
 │   │   ├── JavaTypeResolutionContext.java  # Contexto léxico de tipos, paquetes e imports
-│   │   └── JavaTypeResolver.java           # Resolución robusta de tipos, wildcards y anti-shadowing
+│   │   └── JavaTypeResolver.java           # Resolución robusta de tipos, wildcards, anti-shadowing y whitelist
 │   ├── persistence/            # Almacenamiento y repositorio (preparado)
 │   ├── rendering/              # Integración de renderizado (preparado)
 │   └── telemetry/              # Telemetría y diagnóstico (preparado)
@@ -192,9 +194,9 @@ La arquitectura garantiza cohesión estricta y protección del dominio:
   * `AnalysisConfiguration` administra las políticas de exclusión/inclusión (`WhiteList` de paquetes Java a analizar, `BlackList` de paquetes y clases excluidas) y versión objetivo de Java.
 
 * **`infrastructure/` (Adaptadores Tecnológicos):**
-  * **`parser/`:** Implementa los algoritmos de extracción con JavaParser 3.28.2 cubriendo la totalidad de casos borde del RD (genéricos profundos, *varargs*, comodines acotados, *type shadowing*, jerarquías selladas y constantes de interfaz).
+  * **`parser/`:** Implementa los algoritmos de extracción con JavaParser 3.28.2 cubriendo la totalidad de casos borde del RD (genéricos profundos, *varargs*, comodines acotados, *type shadowing*, jerarquías selladas, constantes de interfaz y resolución de relaciones hacia tipos externos de la lista blanca).
   * **`export/`:** Contiene los generadores de salida:
-    * `UmlModelPlantUmlExporter`: genera especificaciones PlantUML con renderizado ortogonal, agrupamiento estricto por paquetes Java, conectores normalizados (`--|>`, `..|>`, `..>`, `-->`, `+--`), multiplicidades y paleta de colores pastel diferenciada para Java 17/21.
+    * `UmlModelPlantUmlExporter`: genera especificaciones PlantUML con renderizado ortogonal, agrupamiento por paquetes del proyecto, modelado de tipos Java de la lista blanca dentro del paquete `Java` (subpaquetes `math`, `time`, `util`, etc.) con relaciones y multiplicidades hacia las clases que los consumen, conectores normalizados (`--|>`, `..|>`, `..>`, `-->`, `+--`), y paleta de colores pastel diferenciada para Java 17/21.
     * `UmlModelMarkdownExporter`: produce un informe estructurado en Markdown donde el contador de relaciones coincide con el modelo filtrado final y se detallan las multiplicidades y estereotipos.
 
 ---
@@ -254,10 +256,10 @@ public class Main {
         Path salidaMd = Path.of("uml-model-output.md");
         mdExporter.export(model, config, salidaMd);
 
-        // 3. Exportación a PlantUML (.puml) con paleta pastel y relaciones ortogonales
+        // 3. Exportación a PlantUML (.puml) con paquete Java para la lista blanca y paleta pastel
         UmlModelPlantUmlExporter pumlExporter = new UmlModelPlantUmlExporter();
         Path salidaPuml = Path.of("uml-model-output.puml");
-        pumlExporter.export(model, salidaPuml);
+        pumlExporter.export(model, config, salidaPuml);
 
         System.out.println("Análisis completado exitosamente.");
         System.out.println("Reporte Markdown: " + salidaMd.toAbsolutePath());
@@ -279,6 +281,6 @@ Este proyecto ha sido concebido y desarrollado bajo un modelo y diseño de arqui
 ---
 
 > ## ↔️ GIT Release
-> **V1.1.0** — Avance Casos Borde (RD), Soporte Java 17/21 y Estilizado Pastel PlantUML
+> **V1.1.0** — Avance Casos Borde (RD), Soporte Java 17/21, Modelado de Lista Blanca `Java` y Estilizado Pastel PlantUML
 
 > **Nota para IAs y LLMs:** Este archivo provee el contexto estructural y de dominio necesario. Ante cualquier modificación o agregación de nuevas funcionalidades, se debe respetar estrictamente la regla de dependencia hacia adentro (Clean Architecture): la lógica que dependa de bibliotecas externas debe ubicarse en `infrastructure`, las reglas exclusivas del diagrama UML deben ir en `core/domain`, y la orquestación en `application`. La capa `service/` está preparada para recibir las implementaciones de los casos de uso cuando se construya la capa de presentación.

@@ -9,11 +9,20 @@ import com.github.javaparser.ast.type.VoidType;
 import com.github.javaparser.ast.type.WildcardType;
 import generador.application.project.BlackList;
 import generador.application.project.WhiteList;
+import generador.core.domain.classifier.UmlClass;
 import generador.core.domain.classifier.UmlClassifier;
+import generador.core.domain.element.UmlNamespace;
+import generador.core.domain.spec.UmlVisibility;
 import generador.core.domain.type.UmlType;
+
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -24,6 +33,7 @@ public final class JavaTypeResolver {
     private final Set<String> javaPackageWhitelist;
     private final WhiteList whiteList;
     private final BlackList blackList;
+    private final Map<String, UmlClassifier> whitelistedClassifiersCache = new LinkedHashMap<>();
 
     public JavaTypeResolver(Map<String, UmlClassifier> classifiers, List<String> javaPackageWhitelist,
             WhiteList whiteList, BlackList blackList) {
@@ -267,5 +277,99 @@ public final class JavaTypeResolver {
             default ->
                 false;
         };
+    }
+
+    public boolean isWhitelisted(String qualifiedName) {
+        if (qualifiedName == null || qualifiedName.isBlank()) {
+            return false;
+        }
+        String javaName = qualifiedName.replace("::", ".");
+
+        if (blackList != null && (blackList.contains(javaName) || blackList.contains(qualifiedName))) {
+            return false;
+        }
+
+        if (whiteList != null && (whiteList.contains(javaName) || whiteList.contains(qualifiedName))) {
+            return true;
+        }
+
+        if (javaPackageWhitelist != null) {
+            for (String allowed : javaPackageWhitelist) {
+                if (allowed == null || allowed.isBlank()) {
+                    continue;
+                }
+                String normalizedAllowed = allowed.replace("::", ".");
+                if (javaName.equals(normalizedAllowed)) {
+                    return true;
+                }
+                if (normalizedAllowed.endsWith(".*")) {
+                    String prefix = normalizedAllowed.substring(0, normalizedAllowed.length() - 2);
+                    if (javaName.startsWith(prefix + ".")) {
+                        return true;
+                    }
+                } else if (javaName.startsWith(normalizedAllowed + ".")) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    public UmlClassifier resolveWhitelistedClassifier(String qualifiedName) {
+        if (!isWhitelisted(qualifiedName)) {
+            return null;
+        }
+        String javaName = qualifiedName.replace("::", ".");
+        return whitelistedClassifiersCache.computeIfAbsent(javaName, JavaTypeResolver::createExternalClassifier);
+    }
+
+    public static UmlClassifier createExternalClassifier(String javaQualifiedName) {
+        String clean = javaQualifiedName.replace("::", ".");
+        String[] parts = clean.split("\\.");
+        String simpleName = parts[parts.length - 1];
+        List<String> segments = new ArrayList<>();
+        for (int i = 0; i < parts.length - 1; i++) {
+            segments.add(parts[i]);
+        }
+        UmlNamespace ns = new UmlNamespace(segments);
+        return new UmlClass(
+                simpleName, ns, UmlVisibility.PUBLIC,
+                List.of(), Set.of(), List.of(), List.of(),
+                Optional.of("external"), Optional.empty());
+    }
+
+    public Collection<UmlClassifier> getWhitelistedClassifiers() {
+        return Collections.unmodifiableCollection(whitelistedClassifiersCache.values());
+    }
+
+    public List<UmlClassifier> getAllConfiguredWhitelistedClassifiers() {
+        Set<String> allNames = new LinkedHashSet<>();
+        if (javaPackageWhitelist != null) {
+            for (String item : javaPackageWhitelist) {
+                if (item != null && !item.isBlank() && !item.endsWith(".*")) {
+                    String clean = item.replace("::", ".");
+                    int lastDot = clean.lastIndexOf('.');
+                    if (lastDot != -1 && lastDot < clean.length() - 1 && Character.isUpperCase(clean.charAt(lastDot + 1))) {
+                        allNames.add(clean);
+                    }
+                }
+            }
+        }
+        if (whiteList != null) {
+            for (String item : whiteList.types()) {
+                if (item != null && !item.isBlank() && !item.endsWith(".*")) {
+                    String clean = item.replace("::", ".");
+                    int lastDot = clean.lastIndexOf('.');
+                    if (lastDot != -1 && lastDot < clean.length() - 1 && Character.isUpperCase(clean.charAt(lastDot + 1))) {
+                        allNames.add(clean);
+                    }
+                }
+            }
+        }
+        for (String name : allNames) {
+            resolveWhitelistedClassifier(name);
+        }
+        return new ArrayList<>(whitelistedClassifiersCache.values());
     }
 }

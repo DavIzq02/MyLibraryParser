@@ -1,5 +1,6 @@
 package generador.infrastructure.export;
 
+import generador.application.project.AnalysisConfiguration;
 import generador.core.domain.classifier.*;
 import generador.core.domain.feature.UmlOperation;
 import generador.core.domain.feature.UmlParameter;
@@ -7,6 +8,7 @@ import generador.core.domain.feature.UmlProperty;
 import generador.core.domain.model.UmlModel;
 import generador.core.domain.relationship.*;
 import generador.core.domain.spec.UmlModifier;
+import generador.infrastructure.parser.JavaTypeResolver;
 
 import java.io.FileWriter;
 import java.io.IOException;
@@ -28,6 +30,10 @@ public final class UmlModelPlantUmlExporter {
             "java.util.Set", "Set");
 
     public void export(UmlModel model, Path outputPath) throws IOException {
+        export(model, null, outputPath);
+    }
+
+    public void export(UmlModel model, AnalysisConfiguration configuration, Path outputPath) throws IOException {
         StringBuilder puml = new StringBuilder();
 
         puml.append("@startuml\n\n");
@@ -52,11 +58,32 @@ public final class UmlModelPlantUmlExporter {
         puml.append("skinparam class<<external>>BackgroundColor #EAECEE\n");
         puml.append("skinparam interface<<external>>BackgroundColor #EAECEE\n\n");
 
-        // Incluye tanto clasificadores internos como los tipos externos referenciados (Caso 01)
-        Map<String, UmlClassifier> todosClasificadores = obtenerTodosLosClasificadores(model);
-        Map<String, List<UmlClassifier>> clasificadoresPorPaquete = agruparPorPaquete(todosClasificadores.values());
+        // Incluye tanto clasificadores internos como los tipos externos referenciados o configurados
+        Map<String, UmlClassifier> todosClasificadores = obtenerTodosLosClasificadores(model, configuration);
 
-        for (Map.Entry<String, List<UmlClassifier>> entry : clasificadoresPorPaquete.entrySet()) {
+        // Separar clasificadores del proyecto de los externos de Java (paquete Java)
+        Map<String, List<UmlClassifier>> proyectoPorPaquete = new LinkedHashMap<>();
+        Map<String, List<UmlClassifier>> javaPorSubpaquete = new LinkedHashMap<>();
+        List<UmlClassifier> javaSinSubpaquete = new ArrayList<>();
+
+        for (UmlClassifier classifier : todosClasificadores.values()) {
+            boolean esExterno = esClasificadorExterno(model, classifier);
+            String pkg = resolverPaquete(classifier.qualifiedName());
+
+            if (esExterno && (pkg.equals("java") || pkg.startsWith("java."))) {
+                if (pkg.equals("java")) {
+                    javaSinSubpaquete.add(classifier);
+                } else {
+                    String subpkg = pkg.substring("java.".length());
+                    javaPorSubpaquete.computeIfAbsent(subpkg, k -> new ArrayList<>()).add(classifier);
+                }
+            } else {
+                proyectoPorPaquete.computeIfAbsent(pkg, k -> new ArrayList<>()).add(classifier);
+            }
+        }
+
+        // 1. Renderizar paquetes del proyecto
+        for (Map.Entry<String, List<UmlClassifier>> entry : proyectoPorPaquete.entrySet()) {
             String nombrePaquete = entry.getKey();
 
             if (!nombrePaquete.equals("sin_paquete")) {
@@ -65,67 +92,35 @@ public final class UmlModelPlantUmlExporter {
 
             for (UmlClassifier classifier : entry.getValue()) {
                 boolean esExterno = esClasificadorExterno(model, classifier);
-                String tipo = obtenerTipoClassifier(classifier);
-                String estereotipo = resolverEstereotipo(classifier, esExterno);
-                String simpleName = obtenerNombreSimple(classifier.qualifiedName());
-
-                puml.append("    ").append(tipo).append(" ").append(simpleName)
-                        .append(estereotipo).append(" {\n");
-
-                // Para tipos externos (como BigDecimal u OffsetDateTime), se omite el cuerpo
-                if (!esExterno) {
-                    if (classifier instanceof UmlEnumeration enumeration) {
-                        for (UmlEnumerationLiteral literal : enumeration.literals()) {
-                            puml.append("    +  ").append(literal.name()).append("\n");
-                        }
-                    }
-
-                    for (UmlProperty prop : classifier.properties()) {
-                        puml.append("    ").append(convertirVisibilidad(prop.visibility())).append("  ");
-
-                        if (prop.modifiers().contains(UmlModifier.STATIC)) puml.append("{static} ");
-                        if (prop.modifiers().contains(UmlModifier.ABSTRACT)) puml.append("{abstract} ");
-                        if (prop.modifiers().contains(UmlModifier.FINAL) || prop.modifiers().contains(UmlModifier.READ_ONLY)) {
-                            puml.append("{readOnly} ");
-                        }
-
-                        puml.append(prop.name()).append(" : ").append(abreviarTipo(prop.type().name()));
-
-                        prop.initialValue().ifPresent(val -> {
-                            String cleanVal = val.matches("^-?\\d+[Ll]$") ? val.substring(0, val.length() - 1) : val;
-                            puml.append(" = ").append(cleanVal);
-                        });
-                        puml.append("\n");
-                    }
-
-                    for (UmlOperation op : classifier.operations()) {
-                        String returnTypeName = op.isConstructor() ? "void" : abreviarTipo(op.returnType().name());
-
-                        puml.append("    ").append(convertirVisibilidad(op.visibility())).append("  ");
-
-                        if (op.modifiers().contains(UmlModifier.STATIC)) puml.append("{static} ");
-                        if (op.modifiers().contains(UmlModifier.ABSTRACT)) puml.append("{abstract} ");
-
-                        puml.append(op.name()).append("(").append(buildParameterList(op)).append(")");
-
-                        if (returnTypeName != null) {
-                            puml.append(" : ").append(returnTypeName);
-                        }
-
-                        if (op.isConstructor()) {
-                            puml.append(" <<Create>>");
-                        }
-                        puml.append("\n");
-                    }
-                }
-
-                puml.append("    }\n");
+                renderizarClassifier(classifier, esExterno, puml, nombrePaquete.equals("sin_paquete") ? "" : "    ");
             }
 
             if (!nombrePaquete.equals("sin_paquete")) {
                 puml.append("}\n");
             }
             puml.append("\n");
+        }
+
+        // 2. Renderizar paquete Java con todas las clases de la lista blanca y sus subpaquetes
+        if (!javaPorSubpaquete.isEmpty() || !javaSinSubpaquete.isEmpty()) {
+            puml.append("package Java {\n");
+
+            for (UmlClassifier classifier : javaSinSubpaquete) {
+                renderizarClassifier(classifier, true, puml, "    ");
+            }
+
+            for (Map.Entry<String, List<UmlClassifier>> entry : javaPorSubpaquete.entrySet()) {
+                String subpkg = entry.getKey();
+                puml.append("    package ").append(subpkg).append(" {\n");
+
+                for (UmlClassifier classifier : entry.getValue()) {
+                    renderizarClassifier(classifier, true, puml, "        ");
+                }
+
+                puml.append("    }\n");
+            }
+
+            puml.append("}\n\n");
         }
 
         puml.append("' --- Grafo de relaciones ---\n");
@@ -138,6 +133,12 @@ public final class UmlModelPlantUmlExporter {
 
             if (rel instanceof UmlNesting) {
                 puml.append(origenAlias).append(" +-- ").append(destinoAlias).append("\n");
+                continue;
+            }
+
+            // Relación hacia clases externas (lista blanca Java): flecha punteada con <<use>> y sin multiplicidades
+            if (esClasificadorExterno(model, rel.target())) {
+                puml.append(origenAlias).append(" ..> ").append(destinoAlias).append(" : <<use>>").append("\n");
                 continue;
             }
 
@@ -173,7 +174,65 @@ public final class UmlModelPlantUmlExporter {
         }
     }
 
-    private Map<String, UmlClassifier> obtenerTodosLosClasificadores(UmlModel model) {
+    private void renderizarClassifier(UmlClassifier classifier, boolean esExterno, StringBuilder puml, String indent) {
+        String tipo = obtenerTipoClassifier(classifier);
+        String estereotipo = resolverEstereotipo(classifier, esExterno);
+        String simpleName = obtenerNombreSimple(classifier.qualifiedName());
+
+        puml.append(indent).append(tipo).append(" ").append(simpleName)
+                .append(estereotipo).append(" {\n");
+
+        // Para tipos externos (como BigDecimal u OffsetDateTime), se omite el cuerpo
+        if (!esExterno) {
+            if (classifier instanceof UmlEnumeration enumeration) {
+                for (UmlEnumerationLiteral literal : enumeration.literals()) {
+                    puml.append(indent).append("    +  ").append(literal.name()).append("\n");
+                }
+            }
+
+            for (UmlProperty prop : classifier.properties()) {
+                puml.append(indent).append("    ").append(convertirVisibilidad(prop.visibility())).append("  ");
+
+                if (prop.modifiers().contains(UmlModifier.STATIC)) puml.append("{static} ");
+                if (prop.modifiers().contains(UmlModifier.ABSTRACT)) puml.append("{abstract} ");
+                if (prop.modifiers().contains(UmlModifier.FINAL) || prop.modifiers().contains(UmlModifier.READ_ONLY)) {
+                    puml.append("{readOnly} ");
+                }
+
+                puml.append(prop.name()).append(" : ").append(abreviarTipo(prop.type().name()));
+
+                prop.initialValue().ifPresent(val -> {
+                    String cleanVal = val.matches("^-?\\d+[Ll]$") ? val.substring(0, val.length() - 1) : val;
+                    puml.append(" = ").append(cleanVal);
+                });
+                puml.append("\n");
+            }
+
+            for (UmlOperation op : classifier.operations()) {
+                String returnTypeName = op.isConstructor() ? "void" : abreviarTipo(op.returnType().name());
+
+                puml.append(indent).append("    ").append(convertirVisibilidad(op.visibility())).append("  ");
+
+                if (op.modifiers().contains(UmlModifier.STATIC)) puml.append("{static} ");
+                if (op.modifiers().contains(UmlModifier.ABSTRACT)) puml.append("{abstract} ");
+
+                puml.append(op.name()).append("(").append(buildParameterList(op)).append(")");
+
+                if (returnTypeName != null) {
+                    puml.append(" : ").append(returnTypeName);
+                }
+
+                if (op.isConstructor()) {
+                    puml.append(" <<Create>>");
+                }
+                puml.append("\n");
+            }
+        }
+
+        puml.append(indent).append("}\n");
+    }
+
+    private Map<String, UmlClassifier> obtenerTodosLosClasificadores(UmlModel model, AnalysisConfiguration configuration) {
         Map<String, UmlClassifier> todos = new LinkedHashMap<>(model.classifiers());
 
         // Registra clasificadores externos presentes en las relaciones para exportar sus bloques <<external>>
@@ -185,7 +244,31 @@ public final class UmlModelPlantUmlExporter {
                 todos.put(rel.target().qualifiedName(), rel.target());
             }
         }
+
+        // Registra clases configuradas en la lista blanca de Java
+        if (configuration != null) {
+            registrarTiposWhitelist(configuration.javaPackageWhitelist(), todos);
+            if (configuration.whiteList() != null) {
+                registrarTiposWhitelist(configuration.whiteList().types(), todos);
+            }
+        }
+
         return todos;
+    }
+
+    private void registrarTiposWhitelist(Collection<String> types, Map<String, UmlClassifier> todos) {
+        if (types == null) return;
+        for (String type : types) {
+            if (type == null || type.isBlank() || type.endsWith(".*")) continue;
+            String clean = type.replace("::", ".");
+            int lastDot = clean.lastIndexOf('.');
+            if (lastDot != -1 && lastDot < clean.length() - 1 && Character.isUpperCase(clean.charAt(lastDot + 1))) {
+                String umlQName = clean.replace(".", "::");
+                if (!todos.containsKey(umlQName)) {
+                    todos.put(umlQName, JavaTypeResolver.createExternalClassifier(clean));
+                }
+            }
+        }
     }
 
     private boolean esClasificadorExterno(UmlModel model, UmlClassifier classifier) {
@@ -221,23 +304,15 @@ public final class UmlModelPlantUmlExporter {
                     current.append(c);
                 }
             }
-            argParts.add(current.toString().trim());
-
-            String abreviatedArgs = argParts.stream().map(this::abreviarTipo).collect(Collectors.joining(", "));
-            return base + "<" + abreviatedArgs + ">";
-        }
-
-        if (typeName.endsWith("[]")) {
-            return abreviarTipo(typeName.substring(0, typeName.length() - 2)) + "[]";
-        }
-
-        String shortcut = KNOWN_TYPE_SHORTCUTS.get(typeName);
-        if (shortcut != null) return shortcut;
-
-        for (Map.Entry<String, String> entry : KNOWN_TYPE_SHORTCUTS.entrySet()) {
-            if (typeName.startsWith(entry.getKey())) {
-                return entry.getValue() + typeName.substring(entry.getKey().length());
+            if (current.length() > 0) {
+                argParts.add(current.toString().trim());
             }
+
+            return base + "<" + argParts.stream().map(this::abreviarTipo).collect(Collectors.joining(", ")) + ">";
+        }
+
+        if (KNOWN_TYPE_SHORTCUTS.containsKey(typeName)) {
+            return KNOWN_TYPE_SHORTCUTS.get(typeName);
         }
 
         int lastSep = typeName.lastIndexOf("::");
@@ -306,6 +381,15 @@ public final class UmlModelPlantUmlExporter {
     private String sanitizarAlias(String qualifiedName) {
         String pkg = resolverPaquete(qualifiedName);
         String simpleName = obtenerNombreSimple(qualifiedName);
+
+        if (pkg.equals("java")) {
+            return "Java." + simpleName;
+        }
+        if (pkg.startsWith("java.")) {
+            String subpkg = pkg.substring("java.".length());
+            return "Java." + subpkg + "." + simpleName;
+        }
+
         if ("sin_paquete".equals(pkg)) {
             return simpleName;
         }

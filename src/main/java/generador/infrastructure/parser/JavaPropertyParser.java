@@ -64,6 +64,11 @@ public final class JavaPropertyParser {
             return java.util.Optional.empty();
         }
 
+        // Tipos externos simples (JDK / librerías) no se componen internamente
+        if (resolvedType instanceof UmlType.ExternalReference) {
+            return java.util.Optional.empty();
+        }
+
         // CASO 3: Diferenciación Fina.
         // COMPOSITION (*--): Exclusivo e interno. Se crea ahí mismo (inline) o es protegido por ser final sin ser inyectado.
         if (!isCollection) {

@@ -55,7 +55,7 @@ public class Main {
         Path rutaSalidaPuml = Path.of("uml-model-output.puml");
 
         try {
-            pumlExporter.export(model, rutaSalidaPuml);
+            pumlExporter.export(model, configuration, rutaSalidaPuml);
             System.out.println("Análisis terminado correctamente.");
             System.out.println("Archivo Markdown generado: " + rutaSalidaMd.toAbsolutePath());
             System.out.println("Archivo PlantUML generado: " + rutaSalidaPuml.toAbsolutePath());

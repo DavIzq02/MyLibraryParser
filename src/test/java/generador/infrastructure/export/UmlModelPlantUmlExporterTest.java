@@ -1,10 +1,13 @@
 package generador.infrastructure.export;
 
+import generador.application.project.AnalysisConfiguration;
+import generador.application.project.JavaLanguageVersion;
 import generador.core.domain.classifier.UmlClass;
 import generador.core.domain.classifier.UmlClassifier;
 import generador.core.domain.element.UmlNamespace;
 import generador.core.domain.model.UmlModel;
 import generador.core.domain.relationship.*;
+import generador.core.domain.spec.AggregationKind;
 import generador.core.domain.spec.UmlVisibility;
 
 import java.io.IOException;
@@ -17,7 +20,7 @@ public class UmlModelPlantUmlExporterTest {
     public static void main(String[] args) throws IOException {
         testSingleConnection();
         testMultipleConnectionsWithNestingAndInheritance();
-        testManyInheritances();
+        testJavaWhitelistPackageAndRelationships();
         System.out.println("TODOS LOS TESTS DE PLANTUML EXPORTER PASARON SATISFACTORIAMENTE.");
     }
 
@@ -55,9 +58,8 @@ public class UmlModelPlantUmlExporterTest {
         String content = Files.readString(tempFile);
         Files.deleteIfExists(tempFile);
 
-        // Al recibir sólo una conexión, debe usar la flecha simple "-up-|>"
-        if (!content.contains("com__example__Sub -up-|> com__example__Base")) {
-            throw new AssertionError("Fallo en testSingleConnection: esperaba -up-|> pero fue:\n" + content);
+        if (!content.contains("com.example.Sub --|> com.example.Base")) {
+            throw new AssertionError("Fallo en testSingleConnection: esperaba '--|>' pero fue:\n" + content);
         }
     }
 
@@ -84,62 +86,83 @@ public class UmlModelPlantUmlExporterTest {
         String content = Files.readString(tempFile);
         Files.deleteIfExists(tempFile);
 
-        // Outer recibe 2 conexiones: 1 herencia y 1 nesting.
-        // Deben tener direcciones distintas para no sobrescribirse en el mismo punto
-        // gráfico.
-        // Herencia (prioridad 1) obtiene "-up-|>"
-        // Nesting obtiene "com__example__Inner +-- com__example__Outer"
-        if (!content.contains("com__example__Sub -up-|> com__example__Outer")) {
-            throw new AssertionError("Fallo: Herencia no encontrada con -up-|>. Contenido:\n" + content);
+        if (!content.contains("com.example.Sub --|> com.example.Outer")) {
+            throw new AssertionError("Fallo: Herencia no encontrada con --|>. Contenido:\n" + content);
         }
-        if (!content.contains("com__example__Inner +-- com__example__Outer")) {
+        if (!content.contains("com.example.Outer +-- com.example.Inner")) {
             throw new AssertionError("Fallo: Nesting no encontrado con +--. Contenido:\n" + content);
         }
     }
 
-    private static void testManyInheritances() throws IOException {
-        UmlClass base = createClass("com.example", "BaseInterface");
-        UmlClass s1 = createClass("com.example", "Impl1");
-        UmlClass s2 = createClass("com.example", "Impl2");
-        UmlClass s3 = createClass("com.example", "Impl3");
-        UmlClass s4 = createClass("com.example", "Impl4");
-        UmlClass s5 = createClass("com.example", "Impl5");
+    private static void testJavaWhitelistPackageAndRelationships() throws IOException {
+        UmlClass factura = createClass("com.universidad.modelo", "Factura");
+        UmlClass bigDecimal = new UmlClass(
+                "BigDecimal", new UmlNamespace(List.of("java", "math")), UmlVisibility.PUBLIC,
+                List.of(), Set.of(), List.of(), List.of(), Optional.of("external"), Optional.empty());
+        UmlClass offsetDateTime = new UmlClass(
+                "OffsetDateTime", new UmlNamespace(List.of("java", "time")), UmlVisibility.PUBLIC,
+                List.of(), Set.of(), List.of(), List.of(), Optional.of("external"), Optional.empty());
+        UmlClass uuid = new UmlClass(
+                "UUID", new UmlNamespace(List.of("java", "util")), UmlVisibility.PUBLIC,
+                List.of(), Set.of(), List.of(), List.of(), Optional.of("external"), Optional.empty());
 
         Map<String, UmlClassifier> classifiers = new LinkedHashMap<>();
-        classifiers.put(base.qualifiedName(), base);
-        classifiers.put(s1.qualifiedName(), s1);
-        classifiers.put(s2.qualifiedName(), s2);
-        classifiers.put(s3.qualifiedName(), s3);
-        classifiers.put(s4.qualifiedName(), s4);
-        classifiers.put(s5.qualifiedName(), s5);
+        classifiers.put(factura.qualifiedName(), factura);
 
         Set<UmlRelationship> relationships = new LinkedHashSet<>();
-        relationships.add(new UmlGeneralization(s1, base, Optional.empty(), Optional.empty()));
-        relationships.add(new UmlGeneralization(s2, base, Optional.empty(), Optional.empty()));
-        relationships.add(new UmlGeneralization(s3, base, Optional.empty(), Optional.empty()));
-        relationships.add(new UmlGeneralization(s4, base, Optional.empty(), Optional.empty()));
-        relationships.add(new UmlGeneralization(s5, base, Optional.empty(), Optional.empty()));
+        relationships.add(new UmlAssociation(factura, "1", bigDecimal, "1", AggregationKind.NONE, Optional.empty(), Optional.empty()));
+        relationships.add(new UmlAssociation(factura, "1", offsetDateTime, "1", AggregationKind.NONE, Optional.empty(), Optional.empty()));
+        relationships.add(new UmlAssociation(factura, "1", uuid, "1", AggregationKind.NONE, Optional.empty(), Optional.empty()));
 
         UmlModel model = new UmlModel(classifiers, relationships);
 
-        Path tempFile = Files.createTempFile("puml_test_many", ".puml");
+        AnalysisConfiguration config = AnalysisConfiguration.builder(JavaLanguageVersion.JAVA_21)
+                .includeJavaPackage("java.math.BigDecimal")
+                .includeJavaPackage("java.time.OffsetDateTime")
+                .includeJavaPackage("java.util.UUID")
+                .build();
+
+        Path tempFile = Files.createTempFile("puml_test_whitelist", ".puml");
         UmlModelPlantUmlExporter exporter = new UmlModelPlantUmlExporter();
-        exporter.export(model, tempFile);
+        exporter.export(model, config, tempFile);
 
         String content = Files.readString(tempFile);
         Files.deleteIfExists(tempFile);
 
-        // Las 4 direcciones deben estar presentes: up, right, down, left
-        // Y la 5ta debe usar --up-|> con doble guión para espaciar el nivel
-        if (!content.contains("-up-|>"))
-            throw new AssertionError("Falta -up-|>");
-        if (!content.contains("-right-|>"))
-            throw new AssertionError("Falta -right-|>");
-        if (!content.contains("-down-|>"))
-            throw new AssertionError("Falta -down-|>");
-        if (!content.contains("-left-|>"))
-            throw new AssertionError("Falta -left-|>");
-        if (!content.contains("--up-|>"))
-            throw new AssertionError("Falta --up-|> para la 5ta conexión");
+        if (!content.contains("package Java {")) {
+            throw new AssertionError("Fallo: Se esperaba 'package Java {' en el puml generado:\n" + content);
+        }
+        if (!content.contains("package math {")) {
+            throw new AssertionError("Fallo: Se esperaba subpaquete 'package math {' en el puml generado:\n" + content);
+        }
+        if (!content.contains("class BigDecimal <<external>> {")) {
+            throw new AssertionError("Fallo: Se esperaba 'class BigDecimal <<external>> {' en el puml generado:\n" + content);
+        }
+        if (!content.contains("package time {")) {
+            throw new AssertionError("Fallo: Se esperaba subpaquete 'package time {' en el puml generado:\n" + content);
+        }
+        if (!content.contains("class OffsetDateTime <<external>> {")) {
+            throw new AssertionError("Fallo: Se esperaba 'class OffsetDateTime <<external>> {' en el puml generado:\n" + content);
+        }
+        if (!content.contains("package util {")) {
+            throw new AssertionError("Fallo: Se esperaba subpaquete 'package util {' en el puml generado:\n" + content);
+        }
+        if (!content.contains("class UUID <<external>> {")) {
+            throw new AssertionError("Fallo: Se esperaba 'class UUID <<external>> {' en el puml generado:\n" + content);
+        }
+        // Las relaciones hacia clases externas deben ser flechas punteadas con <<use>> y sin multiplicidades
+        if (!content.contains("com.universidad.modelo.Factura ..> Java.math.BigDecimal : <<use>>")) {
+            throw new AssertionError("Fallo: Relación punteada con BigDecimal no encontrada:\n" + content);
+        }
+        if (!content.contains("com.universidad.modelo.Factura ..> Java.time.OffsetDateTime : <<use>>")) {
+            throw new AssertionError("Fallo: Relación punteada con OffsetDateTime no encontrada:\n" + content);
+        }
+        if (!content.contains("com.universidad.modelo.Factura ..> Java.util.UUID : <<use>>")) {
+            throw new AssertionError("Fallo: Relación punteada con UUID no encontrada:\n" + content);
+        }
+        // Verificar que NO aparecen multiplicidades "1" en relaciones hacia clases externas
+        if (content.contains("\"1\" --> \"1\" Java.")) {
+            throw new AssertionError("Fallo: Se encontraron multiplicidades 1->1 hacia clases externas cuando no deben existir:\n" + content);
+        }
     }
 }

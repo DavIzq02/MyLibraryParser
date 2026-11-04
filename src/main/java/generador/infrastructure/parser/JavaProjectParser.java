@@ -80,6 +80,9 @@ public final class JavaProjectParser {
             relationships.addAll(nestingParser.parse(compilationUnit, completeClassifierMap));
         }
 
+        // Asegurar que los clasificadores configurados en la whitelist queden inicializados
+        typeResolver.getAllConfiguredWhitelistedClassifiers();
+
         return new UmlModel(Map.copyOf(completeClassifierMap), Set.copyOf(relationships));
     }
 
