@@ -58,7 +58,9 @@ public final class JavaNestingParser {
         List<String> chain = new ArrayList<>();
         chain.add(declaration.getNameAsString());
 
-        // Subir por los ancestros TypeDeclaration (clases externas, etc.)
+        // CASO 23: Subir por ancestros TypeDeclaration de forma segura.
+        // findAncestor busca recursivamente hacia arriba saltando bloques de métodos 
+        // (Clases locales/anónimas) hasta encontrar el TypeDeclaration contenedor.
         TypeDeclaration<?> current = declaration.findAncestor(TypeDeclaration.class).orElse(null);
         while (current != null) {
             chain.add(0, current.getNameAsString());

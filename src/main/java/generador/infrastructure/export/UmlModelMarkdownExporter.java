@@ -7,11 +7,16 @@ import generador.core.domain.feature.UmlOperation;
 import generador.core.domain.feature.UmlParameter;
 import generador.core.domain.feature.UmlProperty;
 import generador.core.domain.model.UmlModel;
+import generador.core.domain.relationship.UmlAssociation;
+import generador.core.domain.relationship.UmlDependency;
 import generador.core.domain.relationship.UmlRelationship;
+import generador.core.domain.relationship.UmlRelationshipFilter;
 import generador.application.project.AnalysisConfiguration;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 public final class UmlModelMarkdownExporter {
 
@@ -53,7 +58,10 @@ public final class UmlModelMarkdownExporter {
         output.append("| Methods | ").append(model.totalMethods()).append(" |\n");
         output.append("| Constructors | ").append(model.totalConstructors()).append(" |\n");
         output.append("| External type usages | ").append(model.totalExternalTypes()).append(" |\n");
-        output.append("| Relationships | ").append(model.totalRelationships()).append(" |\n\n");
+        
+        // Ahora contamos solo las relaciones filtradas (las reales que quedan en el modelo)
+        int filteredRelationshipsCount = UmlRelationshipFilter.filterStrongest(model.relationships()).size();
+        output.append("| Relationships | ").append(filteredRelationshipsCount).append(" |\n\n");
 
         output.append("### Analyzed classes\n\n");
         for (UmlClassifier classifier : model.classifiers().values())
@@ -178,18 +186,37 @@ public final class UmlModelMarkdownExporter {
 
     private void appendRelationships(StringBuilder output, UmlModel model) {
         output.append("## 3. Relationships\n\n");
-        if (model.relationships().isEmpty()) {
+        
+        // Usar el filtro para que el Markdown coincida exactamente con el PlantUML generado
+        List<UmlRelationship> filteredRelationships = UmlRelationshipFilter.filterStrongest(model.relationships());
+        
+        if (filteredRelationships.isEmpty()) {
             output.append("_None._\n");
             return;
         }
 
-        output.append("| Type | Source | Target |\n");
-        output.append("|---|---|---|\n");
+        // Se amplía la tabla para mostrar multiplicidades y el tipo de agregación / estereotipo
+        output.append("| Type | Source (Mult) | Target (Mult) | Details |\n");
+        output.append("|---|---|---|---|\n");
 
-        for (UmlRelationship relationship : model.relationships())
+        for (UmlRelationship relationship : filteredRelationships) {
+            String sourceMult = "";
+            String targetMult = "";
+            String details = "-";
+
+            if (relationship instanceof UmlAssociation assoc) {
+                sourceMult = assoc.sourceMultiplicity() != null && !assoc.sourceMultiplicity().isEmpty() ? " (`" + assoc.sourceMultiplicity() + "`)" : "";
+                targetMult = assoc.targetMultiplicity() != null && !assoc.targetMultiplicity().isEmpty() ? " (`" + assoc.targetMultiplicity() + "`)" : "";
+                details = assoc.aggregationKind() != null ? "`" + assoc.aggregationKind().name() + "`" : "`NONE`";
+            } else if (relationship instanceof UmlDependency) {
+                details = "`<<use>>`";
+            }
+
             output.append("| `").append(relationship.getClass().getSimpleName()).append("` | `")
-                    .append(relationship.source().qualifiedName()).append("` | `")
-                    .append(relationship.target().qualifiedName()).append("` |\n");
+                    .append(relationship.source().qualifiedName()).append("`").append(sourceMult).append(" | `")
+                    .append(relationship.target().qualifiedName()).append("`").append(targetMult).append(" | ")
+                    .append(details).append(" |\n");
+        }
 
         output.append("\n");
     }

@@ -38,11 +38,8 @@ public final class JavaRelationshipParser {
             }
 
             parseExtendedTypes(declaration, source, typeResolver, context, relationships);
-
             parseImplementedTypes(declaration, source, typeResolver, context, relationships);
-
             parseProperties(source, relationships);
-
             parseOperations(source, relationships);
         }
 
@@ -63,7 +60,6 @@ public final class JavaRelationshipParser {
             });
 
             parseProperties(source, relationships);
-
             parseOperations(source, relationships);
         }
 
@@ -84,7 +80,6 @@ public final class JavaRelationshipParser {
             });
 
             parseProperties(source, relationships);
-
             parseOperations(source, relationships);
         }
 
@@ -96,7 +91,6 @@ public final class JavaRelationshipParser {
         declaration.getExtendedTypes()
                 .forEach(type -> {
                     UmlType resolvedType = typeResolver.resolve(type, context);
-
                     UmlClassifier target = resolveRelationshipTarget(resolvedType);
 
                     if (target != null) {
@@ -112,7 +106,6 @@ public final class JavaRelationshipParser {
         declaration.getImplementedTypes()
                 .forEach(type -> {
                     UmlType resolvedType = typeResolver.resolve(type, context);
-
                     UmlClassifier target = resolveRelationshipTarget(resolvedType);
 
                     if (target != null) {
@@ -127,7 +120,11 @@ public final class JavaRelationshipParser {
             List<UmlClassifier> targets = resolveAssociationTargets(property.type());
 
             for (UmlClassifier target : targets) {
-                addRelationshipIfAbsent(new UmlAssociation(source, "", target, "", property.aggregationKind()
+                // CASO 4 y Multiplicidad: Detecta arreglos/colecciones para inyectar "*"
+                String sourceMult = "1";
+                String targetMult = isMultiple(property.type()) ? "*" : "1";
+
+                addRelationshipIfAbsent(new UmlAssociation(source, sourceMult, target, targetMult, property.aggregationKind()
                         .orElse(AggregationKind.NONE), Optional.empty(), Optional.empty()), relationships);
             }
         }
@@ -135,6 +132,7 @@ public final class JavaRelationshipParser {
 
     private void parseOperations(UmlClassifier source, List<UmlRelationship> relationships) {
         for (UmlOperation operation : source.operations()) {
+            // CASO 24: Extraer dependencias efímeras desde retornos y parámetros
             addDependencies(source, operation.returnType(), relationships);
 
             operation.parameters()
@@ -146,11 +144,13 @@ public final class JavaRelationshipParser {
         List<UmlClassifier> targets = resolveDependencyTargets(type);
 
         for (UmlClassifier target : targets) {
-            if (hasAssociation(source, target, relationships)) {
+            // Evita auto-dependencias y PREVIENE que una dependencia sobreescriba la Herencia
+            if (source.qualifiedName().equals(target.qualifiedName()) || hasStrongerRelationship(source, target, relationships)) {
                 continue;
             }
-
-            addRelationshipIfAbsent(new UmlDependency(source, target, Optional.empty(), Optional.empty()),
+            
+            // Inyección de estereotipo <<use>> como lo requiere el profesor para dependencias efímeras.
+            addRelationshipIfAbsent(new UmlDependency(source, target, Optional.of("<<use>>"), Optional.empty()),
                     relationships);
         }
     }
@@ -181,28 +181,32 @@ public final class JavaRelationshipParser {
         return false;
     }
 
-    private boolean hasAssociation(UmlClassifier source, UmlClassifier target, List<UmlRelationship> relationships) {
+    /**
+     * Nuevo método que protege la Herencia y las Asociaciones fuertes.
+     * Si ya existe un lazo estructural, evita registrar una dependencia redundante.
+     */
+    private boolean hasStrongerRelationship(UmlClassifier source, UmlClassifier target, List<UmlRelationship> relationships) {
         for (UmlRelationship relationship : relationships) {
-            if (!(relationship instanceof UmlAssociation)) {
+            if (!relationship.source().qualifiedName().equals(source.qualifiedName())) {
                 continue;
             }
 
-            if (!relationship.source()
-                    .qualifiedName()
-                    .equals(source.qualifiedName())) {
+            if (!relationship.target().qualifiedName().equals(target.qualifiedName())) {
                 continue;
             }
 
-            if (!relationship.target()
-                    .qualifiedName()
-                    .equals(target.qualifiedName())) {
-                continue;
+            if (relationship instanceof UmlGeneralization || 
+                relationship instanceof UmlRealization || 
+                relationship instanceof UmlAssociation) {
+                return true;
             }
-
-            return true;
         }
 
         return false;
+    }
+
+    private boolean isMultiple(UmlType type) {
+        return (type instanceof UmlType.Array || type instanceof UmlType.Parameterized);
     }
 
     private List<UmlClassifier> resolveAssociationTargets(UmlType type) {
@@ -210,11 +214,9 @@ public final class JavaRelationshipParser {
 
         if (type instanceof UmlType.Reference reference) {
             UmlClassifier classifier = reference.classifier();
-
             if (!(classifier instanceof UmlEnumeration)) {
                 targets.add(classifier);
             }
-
             return targets;
         }
 
@@ -222,6 +224,11 @@ public final class JavaRelationshipParser {
             for (UmlType typeArgument : parameterized.typeArguments()) {
                 targets.addAll(resolveAssociationTargets(typeArgument));
             }
+        }
+
+        // Desempaqueta también si es Array (varargs o [])
+        if (type instanceof UmlType.Array arrayType) {
+            targets.addAll(resolveAssociationTargets(arrayType.elementType()));
         }
 
         return targets;
@@ -232,7 +239,6 @@ public final class JavaRelationshipParser {
 
         if (type instanceof UmlType.Reference reference) {
             targets.add(reference.classifier());
-
             return targets;
         }
 
@@ -240,6 +246,10 @@ public final class JavaRelationshipParser {
             for (UmlType typeArgument : parameterized.typeArguments()) {
                 targets.addAll(resolveDependencyTargets(typeArgument));
             }
+        }
+
+        if (type instanceof UmlType.Array arrayType) {
+            targets.addAll(resolveDependencyTargets(arrayType.elementType()));
         }
 
         return targets;
@@ -258,12 +268,6 @@ public final class JavaRelationshipParser {
         return null;
     }
 
-    /**
-     * Construye la clave cualificada recorriendo la cadena de ancestros
-     * TypeDeclaration, reproduciendo exactamente la forma en que
-     * JavaClassifierParser construye la clave en el mapa:
-     * pkg::OuterClass::InnerClass
-     */
     private String resolveQualifiedName(TypeDeclaration<?> declaration, JavaTypeResolutionContext context) {
         List<String> chain = new ArrayList<>();
         chain.add(declaration.getNameAsString());
@@ -283,17 +287,14 @@ public final class JavaRelationshipParser {
         return context.packageName().replace(".", "::") + "::" + simplePath;
     }
 
-    /** Sobrecarga de conveniencia para ClassOrInterfaceDeclaration (evita cast). */
     private String resolveQualifiedName(ClassOrInterfaceDeclaration declaration, JavaTypeResolutionContext context) {
         return resolveQualifiedName((TypeDeclaration<?>) declaration, context);
     }
 
-    /** Sobrecarga de conveniencia para EnumDeclaration. */
     private String resolveQualifiedName(EnumDeclaration declaration, JavaTypeResolutionContext context) {
         return resolveQualifiedName((TypeDeclaration<?>) declaration, context);
     }
 
-    /** Sobrecarga de conveniencia para RecordDeclaration. */
     private String resolveQualifiedName(RecordDeclaration declaration, JavaTypeResolutionContext context) {
         return resolveQualifiedName((TypeDeclaration<?>) declaration, context);
     }

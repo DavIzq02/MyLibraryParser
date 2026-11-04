@@ -5,7 +5,8 @@ import java.util.List;
 public record JavaTypeResolutionContext(String packageName, List<String> explicitImports, List<String> wildcardImports,
         List<String> templateParameters, String currentTypeQualifiedName) {
 
-    public JavaTypeResolutionContext {
+    public JavaTypeResolutionContext     {
+
         packageName = packageName == null ? "" : packageName;
         explicitImports = explicitImports == null ? List.of() : List.copyOf(explicitImports);
         wildcardImports = wildcardImports == null ? List.of() : List.copyOf(wildcardImports);

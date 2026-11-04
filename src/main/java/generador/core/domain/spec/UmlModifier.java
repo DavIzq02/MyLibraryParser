@@ -1,5 +1,5 @@
 package generador.core.domain.spec;
 
 public enum UmlModifier {
-    ABSTRACT, LEAF, STATIC, DEFAULT, READ_ONLY, FINAL
+    ABSTRACT, LEAF, STATIC, DEFAULT, READ_ONLY, FINAL, SEALED, NON_SEALED
 }

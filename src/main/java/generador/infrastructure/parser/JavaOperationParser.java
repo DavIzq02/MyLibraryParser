@@ -21,9 +21,15 @@ public final class JavaOperationParser {
     public List<UmlOperation> parse(MethodDeclaration declaration, JavaTypeResolver typeResolver,
             JavaTypeResolutionContext context) {
         List<UmlParameter> parameters = new ArrayList<>();
-        for (Parameter parameter : declaration.getParameters())
-            parameters.add(new UmlParameter(parameter.getNameAsString(),
-                    resolveType(parameter.getType(), typeResolver, context)));
+        
+        for (Parameter parameter : declaration.getParameters()) {
+            UmlType resolvedType = resolveType(parameter.getType(), typeResolver, context);
+            // CASO 10: Conversión automática de Varargs a Array[cite: 21]
+            if (parameter.isVarArgs()) {
+                resolvedType = new UmlType.Array(resolvedType, 1);
+            }
+            parameters.add(new UmlParameter(parameter.getNameAsString(), resolvedType));
+        }
 
         return List.of(new UmlOperation(declaration.getNameAsString(), resolveVisibility(declaration),
                 resolveType(declaration.getType(), typeResolver, context), parameters, resolveModifiers(declaration),
@@ -33,9 +39,15 @@ public final class JavaOperationParser {
     public UmlOperation parseConstructor(ConstructorDeclaration declaration, JavaTypeResolver typeResolver,
             JavaTypeResolutionContext context) {
         List<UmlParameter> parameters = new ArrayList<>();
-        for (Parameter parameter : declaration.getParameters())
-            parameters.add(new UmlParameter(parameter.getNameAsString(),
-                    resolveType(parameter.getType(), typeResolver, context)));
+        
+        for (Parameter parameter : declaration.getParameters()) {
+            UmlType resolvedType = resolveType(parameter.getType(), typeResolver, context);
+            // CASO 10: Conversión automática de Varargs a Array en constructores[cite: 21]
+            if (parameter.isVarArgs()) {
+                resolvedType = new UmlType.Array(resolvedType, 1);
+            }
+            parameters.add(new UmlParameter(parameter.getNameAsString(), resolvedType));
+        }
 
         return new UmlOperation(declaration.getNameAsString(), resolveVisibility(declaration),
                 new UmlType.Primitive("void"), parameters, Set.of(), java.util.Optional.empty(), true);
@@ -64,7 +76,6 @@ public final class JavaOperationParser {
         if (declaration.hasModifier(Modifier.Keyword.PRIVATE))
             return UmlVisibility.PRIVATE;
 
-        // En Java, los constructores de enum son privados por definicion
         if (declaration.findAncestor(com.github.javaparser.ast.body.EnumDeclaration.class).isPresent()) {
             return UmlVisibility.PRIVATE;
         }

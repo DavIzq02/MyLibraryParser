@@ -64,17 +64,6 @@ public final class JavaClassifierParser {
         if (isExcluded(declaration))
             return;
 
-        /*
-         * Este es el punto importante del cambio.
-         *
-         * Antes el contexto solamente conocía:
-         * - package
-         * - imports
-         * - template parameters
-         *
-         * Ahora también conoce el tipo que estamos
-         * analizando actualmente.
-         */
         String className = declaration.getNameAsString();
         String currentTypeQualifiedName = namespace.qualifiedNameOf(className);
         JavaTypeResolutionContext classifierContext = context.withCurrentTypeQualifiedName(currentTypeQualifiedName);
@@ -97,11 +86,6 @@ public final class JavaClassifierParser {
         classifiers.add(classifier);
         UmlNamespace childNamespace = namespace.child(classifier.name());
 
-        /*
-         * Los tipos anidados reciben el contexto original.
-         * Al entrar a cada tipo, parseType() vuelve a establecer
-         * el currentTypeQualifiedName correspondiente.
-         */
         for (BodyDeclarationType nestedType : nestedTypes(declaration))
             parseType(nestedType.declaration(), childNamespace, typeResolver, context, classifiers);
     }
@@ -209,13 +193,19 @@ public final class JavaClassifierParser {
         List<String> templateParameters = resolveTemplateParameters(declaration);
         JavaTypeResolutionContext classifierContext = context.withTemplateParameters(templateParameters);
         List<UmlOperation> operations = new ArrayList<>();
+        List<UmlProperty> properties = new ArrayList<>(); // CASO 17: Constantes de interfaz[cite: 21]
+
+        // CASO 17: Procesar campos de interfaz (implícitamente public static final)[cite: 21]
+        for (var field : declaration.getFields()) {
+            properties.addAll(propertyParser.parse(field, typeResolver, classifierContext, Set.of()));
+        }
 
         for (var method : declaration.getMethods())
             operations.addAll(operationParser.parse(method, typeResolver, classifierContext));
 
         return new UmlInterface(declaration.getNameAsString(), namespace, resolveVisibility(declaration),
                 templateParameters,
-                resolveModifiers(declaration), List.of(), operations, Optional.empty(), Optional.empty());
+                resolveModifiers(declaration), properties, operations, Optional.empty(), Optional.empty());
     }
 
     private UmlInterface parseInterfaceStructure(ClassOrInterfaceDeclaration declaration, UmlNamespace namespace) {
@@ -274,9 +264,6 @@ public final class JavaClassifierParser {
         JavaTypeResolutionContext classifierContext = context.withTemplateParameters(List.of());
         List<UmlProperty> properties = new ArrayList<>();
 
-        /*
-         * Los componentes del record son propiedades.
-         */
         for (Parameter component : declaration.getParameters()) {
             properties.add(new UmlProperty(component.getNameAsString(), UmlVisibility.PRIVATE,
                     typeResolver.resolve(component.getType(), classifierContext), Set.of(UmlModifier.FINAL),
@@ -285,18 +272,9 @@ public final class JavaClassifierParser {
 
         List<UmlOperation> operations = new ArrayList<>();
 
-        /*
-         * 1. Constructores explícitos.
-         */
         for (var constructor : declaration.getConstructors())
             operations.add(operationParser.parseConstructor(constructor, typeResolver, classifierContext));
 
-        /*
-         * 2. Constructor canónico implícito.
-         *
-         * JavaParser no expone el constructor que Java
-         * genera automáticamente para el record.
-         */
         if (declaration.getConstructors().isEmpty()) {
             List<UmlParameter> parameters = new ArrayList<>();
 
@@ -308,15 +286,9 @@ public final class JavaClassifierParser {
                     new UmlType.Primitive("void"), parameters, Set.of(), Optional.empty(), true));
         }
 
-        /*
-         * 3. Métodos explícitos.
-         */
         for (var method : declaration.getMethods())
             operations.addAll(operationParser.parse(method, typeResolver, classifierContext));
 
-        /*
-         * 4. Accessors implícitos del record.
-         */
         for (Parameter component : declaration.getParameters()) {
             boolean accessorExists = operations.stream()
                     .anyMatch(operation -> !operation.isConstructor()
@@ -423,6 +395,13 @@ public final class JavaClassifierParser {
             modifiers.add(UmlModifier.FINAL);
         if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.STATIC))
             modifiers.add(UmlModifier.STATIC);
+            
+        // CASO 16: Jerarquías selladas[cite: 21]
+        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.SEALED))
+            modifiers.add(UmlModifier.SEALED);
+        if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.NON_SEALED))
+            modifiers.add(UmlModifier.NON_SEALED);
+            
         return Set.copyOf(modifiers);
     }
 

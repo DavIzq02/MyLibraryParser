@@ -26,28 +26,23 @@ public final class JavaPropertyParser {
             UmlType resolvedType = resolveType(variable, typeResolver, context);
             properties.add(new UmlProperty(variable.getNameAsString(), resolveVisibility(declaration), resolvedType,
                     resolveModifiers(declaration), variable.getInitializer().map(Object::toString),
-                    resolveAggregationKind(variable, constructorParameters, resolvedType)));
+                    resolveAggregationKind(variable, declaration, constructorParameters, resolvedType)));
         }
 
         return List.copyOf(properties);
     }
 
     private UmlVisibility resolveVisibility(FieldDeclaration declaration) {
-        if (declaration.hasModifier(Modifier.Keyword.PUBLIC))
-            return UmlVisibility.PUBLIC;
-        if (declaration.hasModifier(Modifier.Keyword.PROTECTED))
-            return UmlVisibility.PROTECTED;
-        if (declaration.hasModifier(Modifier.Keyword.PRIVATE))
-            return UmlVisibility.PRIVATE;
+        if (declaration.hasModifier(Modifier.Keyword.PUBLIC)) return UmlVisibility.PUBLIC;
+        if (declaration.hasModifier(Modifier.Keyword.PROTECTED)) return UmlVisibility.PROTECTED;
+        if (declaration.hasModifier(Modifier.Keyword.PRIVATE)) return UmlVisibility.PRIVATE;
         return UmlVisibility.PACKAGE;
     }
 
     private Set<UmlModifier> resolveModifiers(FieldDeclaration declaration) {
         Set<UmlModifier> modifiers = new HashSet<>();
-        if (declaration.hasModifier(Modifier.Keyword.STATIC))
-            modifiers.add(UmlModifier.STATIC);
-        if (declaration.hasModifier(Modifier.Keyword.FINAL))
-            modifiers.add(UmlModifier.FINAL);
+        if (declaration.hasModifier(Modifier.Keyword.STATIC)) modifiers.add(UmlModifier.STATIC);
+        if (declaration.hasModifier(Modifier.Keyword.FINAL)) modifiers.add(UmlModifier.FINAL);
         return Set.copyOf(modifiers);
     }
 
@@ -57,26 +52,32 @@ public final class JavaPropertyParser {
     }
 
     private java.util.Optional<AggregationKind> resolveAggregationKind(VariableDeclarator variable,
-            Set<String> constructorParameters, UmlType resolvedType) {
+            FieldDeclaration declaration, Set<String> constructorParameters, UmlType resolvedType) {
 
-        /*
-         * COMPOSITE:
-         * The attribute creates its own object.
-         */
-        if (variable.getInitializer().isPresent() && variable.getInitializer().get() instanceof ObjectCreationExpr)
-            return java.util.Optional.of(AggregationKind.COMPOSITE);
+        boolean isCollection = (resolvedType instanceof UmlType.Parameterized || resolvedType instanceof UmlType.Array);
+        boolean isFinal = declaration.hasModifier(Modifier.Keyword.FINAL);
+        boolean isInjected = constructorParameters.contains(variable.getNameAsString());
+        boolean hasInlineInit = variable.getInitializer().isPresent() && variable.getInitializer().get() instanceof ObjectCreationExpr;
 
-        /*
-         * SHARED:
-         * The attribute is a reference to another
-         * classifier of the analyzed project and its
-         * name is received through a constructor.
-         */
-        if (resolvedType instanceof UmlType.Reference reference
-                && !(reference.classifier() instanceof UmlEnumeration)
-                && constructorParameters.contains(variable.getNameAsString()))
+        // Las enumeraciones no reciben relaciones de agregación/composición convencionales
+        if (resolvedType instanceof UmlType.Reference reference && reference.classifier() instanceof UmlEnumeration) {
+            return java.util.Optional.empty();
+        }
+
+        // CASO 3: Diferenciación Fina.
+        // COMPOSITION (*--): Exclusivo e interno. Se crea ahí mismo (inline) o es protegido por ser final sin ser inyectado.
+        if (!isCollection) {
+            if (hasInlineInit || (isFinal && !isInjected)) {
+                return java.util.Optional.of(AggregationKind.COMPOSITE);
+            }
+        }
+
+        // SHARED (o--): Agrupación externa. Típicamente colecciones de elementos.
+        if (isCollection) {
             return java.util.Optional.of(AggregationKind.SHARED);
+        }
 
+        // ASSOCIATION (-->): Asociación simple. Referencia 1 a 1 inyectada (Como Conductor a Licencia).
         return java.util.Optional.empty();
     }
 }
