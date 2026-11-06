@@ -137,9 +137,20 @@ public final class JavaClassifierParser {
 
     private List<BodyDeclarationType> nestedTypes(TypeDeclaration<?> declaration) {
         List<BodyDeclarationType> nestedTypes = new ArrayList<>();
-        for (BodyDeclaration<?> member : declaration.getMembers())
-            if (member instanceof TypeDeclaration<?> nestedType)
+        for (BodyDeclaration<?> member : declaration.getMembers()) {
+            if (member instanceof TypeDeclaration<?> nestedType) {
                 nestedTypes.add(new BodyDeclarationType(nestedType));
+            } else {
+                for (TypeDeclaration<?> localType : member.findAll(TypeDeclaration.class)) {
+                    if (!localType.equals(declaration)) {
+                        Optional<TypeDeclaration> parentType = localType.findAncestor(TypeDeclaration.class);
+                        if (parentType.isPresent() && parentType.get().equals(declaration)) {
+                            nestedTypes.add(new BodyDeclarationType(localType));
+                        }
+                    }
+                }
+            }
+        }
         return nestedTypes;
     }
 
@@ -193,9 +204,8 @@ public final class JavaClassifierParser {
         List<String> templateParameters = resolveTemplateParameters(declaration);
         JavaTypeResolutionContext classifierContext = context.withTemplateParameters(templateParameters);
         List<UmlOperation> operations = new ArrayList<>();
-        List<UmlProperty> properties = new ArrayList<>(); // CASO 17: Constantes de interfaz[cite: 21]
+        List<UmlProperty> properties = new ArrayList<>();
 
-        // CASO 17: Procesar campos de interfaz (implícitamente public static final)[cite: 21]
         for (var field : declaration.getFields()) {
             properties.addAll(propertyParser.parse(field, typeResolver, classifierContext, Set.of()));
         }
@@ -261,52 +271,39 @@ public final class JavaClassifierParser {
     private UmlRecord parseRecord(RecordDeclaration declaration, UmlNamespace namespace, JavaTypeResolver typeResolver,
             JavaTypeResolutionContext context) {
 
-        JavaTypeResolutionContext classifierContext = context.withTemplateParameters(List.of());
+        List<String> templateParameters = resolveTemplateParameters(declaration);
+        JavaTypeResolutionContext classifierContext = context.withTemplateParameters(templateParameters);
         List<UmlProperty> properties = new ArrayList<>();
 
+        // 1. Extraer componentes del record (parámetros del encabezado)
         for (Parameter component : declaration.getParameters()) {
             properties.add(new UmlProperty(component.getNameAsString(), UmlVisibility.PRIVATE,
                     typeResolver.resolve(component.getType(), classifierContext), Set.of(UmlModifier.FINAL),
                     Optional.empty(), Optional.empty()));
         }
 
+        // 2. Extraer campos explícitos (constantes static final dentro del record)
+        for (var field : declaration.getFields()) {
+            List<UmlProperty> parsedProperties = propertyParser.parse(field, typeResolver, classifierContext, Set.of());
+            properties.addAll(parsedProperties);
+        }
+
         List<UmlOperation> operations = new ArrayList<>();
 
+        // 3. Constructores explícitos
         for (var constructor : declaration.getConstructors())
             operations.add(operationParser.parseConstructor(constructor, typeResolver, classifierContext));
 
-        if (declaration.getConstructors().isEmpty()) {
-            List<UmlParameter> parameters = new ArrayList<>();
-
-            for (Parameter component : declaration.getParameters())
-                parameters.add(new UmlParameter(component.getNameAsString(),
-                        typeResolver.resolve(component.getType(), classifierContext)));
-
-            operations.add(new UmlOperation(declaration.getNameAsString(), resolveVisibility(declaration),
-                    new UmlType.Primitive("void"), parameters, Set.of(), Optional.empty(), true));
-        }
-
+        // 4. Métodos explícitos
         for (var method : declaration.getMethods())
             operations.addAll(operationParser.parse(method, typeResolver, classifierContext));
 
-        for (Parameter component : declaration.getParameters()) {
-            boolean accessorExists = operations.stream()
-                    .anyMatch(operation -> !operation.isConstructor()
-                            && operation.name().equals(component.getNameAsString()) &&
-                            operation.parameters().isEmpty());
-
-            if (!accessorExists)
-                operations.add(new UmlOperation(component.getNameAsString(), UmlVisibility.PUBLIC,
-                        typeResolver.resolve(component.getType(), classifierContext), List.of(), Set.of(),
-                        Optional.empty(), false));
-        }
-
-        return new UmlRecord(declaration.getNameAsString(), namespace, resolveVisibility(declaration), List.of(),
+        return new UmlRecord(declaration.getNameAsString(), namespace, resolveVisibility(declaration), templateParameters,
                 resolveModifiers(declaration), properties, operations, Optional.empty(), Optional.empty());
     }
 
     private UmlRecord parseRecordStructure(RecordDeclaration declaration, UmlNamespace namespace) {
-        return new UmlRecord(declaration.getNameAsString(), namespace, resolveVisibility(declaration), List.of(),
+        return new UmlRecord(declaration.getNameAsString(), namespace, resolveVisibility(declaration), resolveTemplateParameters(declaration),
                 resolveModifiers(declaration), List.of(), List.of(), Optional.empty(), Optional.empty());
     }
 
@@ -334,6 +331,13 @@ public final class JavaClassifierParser {
     }
 
     private List<String> resolveTemplateParameters(ClassOrInterfaceDeclaration declaration) {
+        List<String> parameters = new ArrayList<>();
+        declaration.getTypeParameters().forEach(parameter -> parameters.add(parameter.getNameAsString()));
+        return List.copyOf(parameters);
+    }
+
+    // Sobrecarga para extraer los parámetros genéricos de un record
+    private List<String> resolveTemplateParameters(RecordDeclaration declaration) {
         List<String> parameters = new ArrayList<>();
         declaration.getTypeParameters().forEach(parameter -> parameters.add(parameter.getNameAsString()));
         return List.copyOf(parameters);
@@ -386,7 +390,7 @@ public final class JavaClassifierParser {
             return UmlVisibility.PRIVATE;
         return UmlVisibility.PACKAGE;
     }
-
+    
     private Set<UmlModifier> resolveModifiers(ClassOrInterfaceDeclaration declaration) {
         Set<UmlModifier> modifiers = new java.util.HashSet<>();
         if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.ABSTRACT))
@@ -395,13 +399,10 @@ public final class JavaClassifierParser {
             modifiers.add(UmlModifier.FINAL);
         if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.STATIC))
             modifiers.add(UmlModifier.STATIC);
-            
-        // CASO 16: Jerarquías selladas[cite: 21]
         if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.SEALED))
             modifiers.add(UmlModifier.SEALED);
         if (declaration.hasModifier(com.github.javaparser.ast.Modifier.Keyword.NON_SEALED))
             modifiers.add(UmlModifier.NON_SEALED);
-            
         return Set.copyOf(modifiers);
     }
 

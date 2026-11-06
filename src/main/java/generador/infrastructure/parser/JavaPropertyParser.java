@@ -1,6 +1,7 @@
 package generador.infrastructure.parser;
 
 import com.github.javaparser.ast.Modifier;
+import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.FieldDeclaration;
 import com.github.javaparser.ast.body.VariableDeclarator;
 import com.github.javaparser.ast.expr.ObjectCreationExpr;
@@ -13,6 +14,7 @@ import generador.core.domain.classifier.UmlEnumeration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 public final class JavaPropertyParser {
@@ -21,12 +23,31 @@ public final class JavaPropertyParser {
             JavaTypeResolutionContext context, Set<String> constructorParameters) {
 
         List<UmlProperty> properties = new ArrayList<>();
+        UmlVisibility visibility = resolveVisibility(declaration);
+        Set<UmlModifier> modifiers = resolveModifiers(declaration);
+
+        // REGLA JAVA: Los campos declarados en una interfaz son implícitamente public, static y final.
+        Optional<ClassOrInterfaceDeclaration> parent = declaration.findAncestor(ClassOrInterfaceDeclaration.class);
+        if (parent.isPresent() && parent.get().isInterface()) {
+            visibility = UmlVisibility.PUBLIC;
+            Set<UmlModifier> interfaceMods = new HashSet<>(modifiers);
+            interfaceMods.add(UmlModifier.STATIC);
+            interfaceMods.add(UmlModifier.FINAL);
+            modifiers = Set.copyOf(interfaceMods);
+        }
 
         for (VariableDeclarator variable : declaration.getVariables()) {
             UmlType resolvedType = resolveType(variable, typeResolver, context);
-            properties.add(new UmlProperty(variable.getNameAsString(), resolveVisibility(declaration), resolvedType,
-                    resolveModifiers(declaration), variable.getInitializer().map(Object::toString),
-                    resolveAggregationKind(variable, declaration, constructorParameters, resolvedType)));
+            
+            // Corrección: Respetando el orden original de la firma de tu constructor
+            properties.add(new UmlProperty(
+                    variable.getNameAsString(), 
+                    visibility, 
+                    resolvedType,
+                    modifiers, 
+                    variable.getInitializer().map(Object::toString),
+                    resolveAggregationKind(variable, declaration, constructorParameters, resolvedType)
+            ));
         }
 
         return List.copyOf(properties);
